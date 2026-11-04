@@ -24,7 +24,7 @@ const defaults = {
     enabled: true,
     iconMode: 'default', // default | custom | none
     iconUrl: '',
-    iconSize: 560,
+    iconSize: 150,
     iconAnim: 'none', // none | float | pulse | glow
     bgMode: 'default', // default | custom | slideshow
     bgUrl: '',
