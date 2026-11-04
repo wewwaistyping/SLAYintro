@@ -95,6 +95,13 @@
         rgba(0, 0, 0, var(--cs-dim, 0.35));
 }
 
+/* The part of a background chosen for this device. Scaled here, because the image
+   animations own the transform of the media inside. */
+.cs-stage .cs-frame {
+    position: absolute;
+    inset: 0;
+}
+
 /* Slideshow: stacked slides, crossfade */
 .cs-stage .cs-slide {
     position: absolute;
@@ -271,7 +278,8 @@
    Settings panel
    ============================================================ */
 
-.cs-settings {
+.cs-settings,
+.cs-fr-ov {
     --cs-accent: var(--SmartThemeQuoteColor, #e18a24);
     --cs-line: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
     --cs-soft: color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 7%, transparent);
@@ -364,12 +372,50 @@
     transition: opacity 0.2s, filter 0.2s;
 }
 
-.cs-mini > .cs-stage {
+.cs-mini-wrap {
+    position: relative;
+}
+
+.cs-mini.cs-is-phone {
+    width: 46%;
+    margin: 0 auto;
+    aspect-ratio: 393 / 710;
+    border-radius: 16px;
+}
+
+.cs-dev-switch {
+    position: absolute;
+    right: 6px;
+    top: 6px;
+    display: flex;
+    border: 1px solid var(--cs-line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.65);
+}
+
+.cs-dev-switch button {
+    width: 38px;
+    height: 34px;
+    border: 0;
+    background: none;
+    color: #fff;
+    opacity: 0.7;
+    cursor: pointer;
+}
+
+.cs-dev-switch button.cs-on {
+    background: var(--cs-accent);
+    color: #111;
+    opacity: 1;
+}
+
+:is(.cs-mini, .cs-fr-prev) > .cs-stage {
     position: absolute;
     left: 0;
     top: 0;
-    width: 1280px;
-    height: 720px;
+    width: var(--cs-stage-w, 1280px);
+    height: var(--cs-stage-h, 720px);
     transform-origin: 0 0;
     transform: scale(var(--k, 0.3));
     pointer-events: none;
@@ -783,6 +829,25 @@
     text-shadow: 0 1px 3px #000;
 }
 
+.cs-slide-crop {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    border: none;
+    background: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.cs-slide-crop.cs-on {
+    background: var(--cs-accent);
+    color: #111;
+}
+
 .cs-slide-del {
     position: absolute;
     top: 3px;
@@ -835,4 +900,181 @@
 .cs-slide-add:hover {
     opacity: 1;
     border-color: var(--cs-accent);
+}
+
+/* ============================================================
+   Frame and crop dialog
+   ============================================================ */
+
+/* Sized by hand: on phones <html> has a transform and no height, which makes it the
+   containing block of anything fixed, so inset: 0 would collapse this to nothing. */
+.cs-fr-ov {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+    background: rgba(6, 6, 10, 0.91);
+    color: var(--SmartThemeBodyColor, #ddd);
+}
+
+.cs-fr-box {
+    width: 100%;
+    max-width: 760px;
+    max-height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    background: var(--SmartThemeBlurTintColor, #1c1c24);
+    border: 1px solid var(--cs-line);
+    border-radius: 14px;
+    box-shadow: 0 18px 52px rgba(0, 0, 0, 0.6);
+}
+
+.cs-fr-head { display: flex; align-items: flex-start; gap: 10px; }
+.cs-fr-head > div { flex: 1; min-width: 0; }
+.cs-fr-title { font-weight: 600; color: var(--cs-accent); }
+.cs-fr-sub { font-size: 0.85em; opacity: 0.65; }
+.cs-fr-x { flex: 0 0 40px; height: 40px; border: 0; border-radius: 8px; background: var(--cs-soft); color: inherit; cursor: pointer; }
+
+.cs-fr-tabs { display: flex; gap: 6px; flex-shrink: 0; }
+
+.cs-fr-tabs button {
+    flex: 1;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    background: var(--cs-soft);
+    border: 1px solid var(--cs-line);
+    border-radius: 8px;
+    color: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.cs-fr-tabs button.cs-on { background: var(--cs-accent); border-color: var(--cs-accent); color: #111; font-weight: 600; }
+.cs-fr-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0; }
+.cs-set .cs-fr-dot { opacity: 1; }
+
+.cs-fr-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    min-height: 0;
+}
+
+/* Padding keeps the corner handles on screen when the frame reaches the picture's edge. */
+.cs-fr-stage {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 0;
+    height: min(52dvh, 420px);
+    padding: 16px;
+    background: #08070b;
+    border-radius: 8px;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.cs-fr-stage.cs-fr-checker,
+.cs-fr-crop-prev { background: repeating-conic-gradient(#2a2730 0 25%, #1c1a21 0 50%) 0 0 / 18px 18px; }
+.cs-fr-media { display: block; max-width: 100%; max-height: 100%; pointer-events: none; -webkit-user-drag: none; }
+
+.cs-fr-rect {
+    position: absolute;
+    cursor: move;
+    touch-action: none;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+    outline: 2px solid var(--cs-accent);
+}
+
+.cs-fr-rect::before,
+.cs-fr-rect::after { content: ''; position: absolute; pointer-events: none; }
+.cs-fr-rect::before { inset: 0 33.33%; border-inline: 1px solid rgba(255, 255, 255, 0.28); }
+.cs-fr-rect::after { inset: 33.33% 0; border-block: 1px solid rgba(255, 255, 255, 0.28); }
+
+.cs-fr-h { position: absolute; width: 36px; height: 36px; z-index: 1; touch-action: none; }
+
+.cs-fr-h::after {
+    content: '';
+    position: absolute;
+    left: 11px;
+    top: 11px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--cs-accent);
+}
+
+.cs-fr-h.cs-nw { left: -18px; top: -18px; cursor: nwse-resize; }
+.cs-fr-h.cs-ne { right: -18px; top: -18px; cursor: nesw-resize; }
+.cs-fr-h.cs-sw { left: -18px; bottom: -18px; cursor: nesw-resize; }
+.cs-fr-h.cs-se { right: -18px; bottom: -18px; cursor: nwse-resize; }
+
+.cs-fr-prev { position: relative; overflow: hidden; background: #000; border: 1px solid var(--cs-line); border-radius: 6px; }
+.cs-fr-prev.cs-is-phone { border-radius: 12px; }
+.cs-fr-crop-prev { display: block; max-width: 150px; max-height: 150px; border-radius: 6px; }
+
+.cs-fr-zoom { display: flex; align-items: center; gap: 10px; min-height: 32px; flex-shrink: 0; opacity: 0.85; }
+/* Themes restyle range inputs heavily, so this one draws itself. */
+.cs-fr-zoom input[type='range'] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    min-width: 0;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.cs-fr-zoom input[type='range']::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--cs-line); }
+.cs-fr-zoom input[type='range']::-moz-range-track { height: 4px; border-radius: 2px; background: var(--cs-line); }
+
+.cs-fr-zoom input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    margin-top: -9px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--cs-accent);
+}
+
+.cs-fr-zoom input[type='range']::-moz-range-thumb { width: 22px; height: 22px; border: 0; border-radius: 50%; background: var(--cs-accent); }
+.cs-fr-info { display: flex; justify-content: space-between; gap: 10px; font-size: 0.85em; opacity: 0.65; flex-shrink: 0; }
+.cs-fr-btns { display: flex; gap: 8px; flex-shrink: 0; }
+.cs-fr-b { flex: 1; min-height: 44px; background: var(--cs-soft); border: 1px solid var(--cs-line); border-radius: 8px; color: inherit; cursor: pointer; }
+.cs-fr-b.cs-fr-primary { background: var(--cs-accent); border-color: var(--cs-accent); color: #111; font-weight: 600; }
+.cs-fr-b.cs-fr-ghost { flex: 0 0 48px; }
+
+@media (max-width: 560px) {
+    .cs-fr-stage { height: 38dvh; padding: 14px; }
+    .cs-fr-main { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+    .cs-fr-side { display: flex; justify-content: center; }
+    .cs-fr-sub { display: none; }
+}
+
+@media (max-height: 560px) {
+    .cs-fr-stage { height: 46dvh; }
+    .cs-fr-sub, .cs-fr-info { display: none; }
 }

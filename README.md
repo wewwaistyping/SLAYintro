@@ -37,7 +37,7 @@ Tested on SillyTavern 1.19.0, on desktop and on a phone.
 
 The screen replaces itself on every launch. For the first second after the tab opens, the Tavern still shows its stock screen: extensions start only after it has read the settings, and nothing can step in earlier. From then on the screen is yours until loading ends.
 
-Settings: **Extensions → SLAYintro**. A live preview sits at the top; click it for full screen. Every change shows right away.
+Settings: **Extensions → SLAYintro**. A live preview sits at the top; click it for full screen. The switch in its corner shows how the screen looks on a computer and on a phone. Every change shows right away.
 
 ## Tabs
 
@@ -52,6 +52,14 @@ Settings: **Extensions → SLAYintro**. A live preview sits at the top; click it
 ## Builds
 
 A set of settings can be saved as a build and switched in the dropdown. Edits go straight into the selected build, and a line under the list reminds you which one. To make a new build, press the floppy first and edit after. If you press it after editing, the extension offers to put the old build back as it was. The bin deletes the selected build.
+
+## Framing and cropping
+
+A background fills the whole screen, so a wide monitor and a narrow phone show different parts of the same picture. The frame window opens when you upload a background, and later from the button next to the file field. Slides have the same button on their tile.
+
+You can move the frame, drag its corners, or zoom with the slider, the mouse wheel or two fingers. The computer and the phone each get their own frame, with the finished screen shown beside it. The file itself does not change, so frames work for videos too and can always be removed. Frames are stored in the build. If a light video for phones is set, the phone frame applies to it, so it should have the same proportions.
+
+Logos and custom badges get a real crop: it makes a new file, and the old one stays in `user/files`. GIFs and videos cannot be cropped this way. A checkbox on the Background tab turns the upload window off; the button stays.
 
 ## Loading badges
 

@@ -4,10 +4,10 @@ import { loader } from '../../../action-loader.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { SPINNERS, applySpinner, effectiveSpinner } from './spinners.js';
 import { VFX, VFX_GROUPS, buildVfx } from './vfx.js';
+import { FRAME_DEVICES, applyFrame, frameDialog, screenDevice } from './frame.js';
 
 const MODULE = 'customSplash';
 const VIDEO_RE = /\.(mp4|webm|mov|m4v|ogv)(\?.*)?$/i;
-const STAGE_W = 1280;
 const SLIDE_FADE_MS = 1500;
 
 /** Phones, tablets and data-saver: lighter video, fewer particles. */
@@ -29,6 +29,7 @@ const defaults = {
     bgMode: 'default', // default | custom | slideshow
     bgUrl: '',
     bgUrlMobile: '', // optional lighter video for phones
+    frames: {}, // what each device shows of a background: url -> { desk, phone }
     slides: [],
     slideSeconds: 6,
     slideShuffle: true,
@@ -44,6 +45,7 @@ const defaults = {
     plumbobColor: 'green',
     spinnerUrl: '',
     spinnerAnim: 'spin', // spin | pulse | sway | float | blink | flip | bounce | none
+    skipCrop: false,
 };
 
 const VFX_DEFAULT_AMT = 50;
@@ -63,8 +65,8 @@ function migrateVfx(s) {
     s.vfxList = s.vfxList.filter(k => VFX[k]);
 }
 
-/** Everything that defines a look; `enabled` is a global switch, not part of a build. */
-const PRESET_KEYS = Object.keys(defaults).filter(k => k !== 'enabled');
+/** Everything that defines a look; the switches below are global, not part of a build. */
+const PRESET_KEYS = Object.keys(defaults).filter(k => !['enabled', 'skipCrop'].includes(k));
 
 function snapshot(src) {
     return structuredClone(Object.fromEntries(PRESET_KEYS.map(k => [k, src[k]])));
@@ -252,10 +254,22 @@ function animClass(s, url) {
     return s.bgAnim !== 'none' && !isVideo(url) ? ` cs-anim-${s.bgAnim}` : '';
 }
 
+/** A background file, inside the frame chosen for this device if it has one. */
+function framedMedia(s, url, frameKey, className, device) {
+    const media = mediaElement(url, className);
+    const frame = s.frames?.[frameKey]?.[device];
+    if (!frame) return media;
+    const wrap = document.createElement('div');
+    wrap.className = 'cs-frame';
+    wrap.append(media);
+    applyFrame(wrap, frame);
+    return wrap;
+}
+
 /**
  * @returns {HTMLElement|null} the background layer, or null for the theme's default blur
  */
-function buildBackground(s, life, small = false) {
+function buildBackground(s, life, small = false, device = screenDevice()) {
     const bg = document.createElement('div');
     bg.className = 'cs-bg';
 
@@ -265,7 +279,7 @@ function buildBackground(s, life, small = false) {
         const stillForVideo = isVideo(s.bgUrl) && !isVideo(url);
         const anim = stillForVideo && s.bgAnim === 'none' ? ' cs-anim-kenburns' : animClass(s, url);
         bg.classList.add('cs-bg-single');
-        bg.appendChild(mediaElement(url, 'cs-bg-media' + anim));
+        bg.appendChild(framedMedia(s, url, s.bgUrl, 'cs-bg-media' + anim, device));
         return bg;
     }
 
@@ -288,7 +302,7 @@ function buildBackground(s, life, small = false) {
     const load = slide => {
         if (slide.firstChild) return;
         const url = slide.dataset.url;
-        slide.appendChild(mediaElement(url, 'cs-bg-media' + animClass(s, url)));
+        slide.appendChild(framedMedia(s, url, url, 'cs-bg-media' + animClass(s, url), device));
     };
     load(els[0]);
     els[0].classList.add('cs-on');
@@ -320,7 +334,7 @@ function tipList(s) {
  * @param {HTMLElement} el element shaped like core's splash: .splash-logo, spinner, .splash-message
  * @returns {ReturnType<typeof createLife>|null} call .release() when the splash is gone
  */
-function decorate(el, s = settings(), { force = false, small = false } = {}) {
+function decorate(el, s = settings(), { force = false, small = false, device = screenDevice() } = {}) {
     if (!el || el.classList.contains('cs-stage')) return null;
     if (!force && !s.enabled) return null;
 
@@ -331,7 +345,7 @@ function decorate(el, s = settings(), { force = false, small = false } = {}) {
     el.style.setProperty('--cs-icon-size', `${s.iconSize}px`);
     el.style.setProperty('--cs-spin-scale', String((Number(s.spinnerScale) || 100) / 100));
 
-    const bg = buildBackground(s, life, small);
+    const bg = buildBackground(s, life, small, device);
     if (bg) {
         el.prepend(bg);
         el.classList.add('cs-has-bg');
@@ -570,9 +584,10 @@ const range = (key, label, min, max, step, unit) => `
       <input type="range" data-cs-key="${key}" data-num min="${min}" max="${max}" step="${step}">
     </label>`;
 
-const urlRow = (key, uploadId) => `
+const urlRow = (key, uploadId, cropId) => `
     <div class="cs-url">
       <input type="text" class="text_pole" data-cs-key="${key}" placeholder="/user/files/… или https://…">
+      ${cropId ? `<button type="button" class="menu_button cs-icon-btn" id="${cropId}" title="Кадр и обрезка"><i class="fa-solid fa-crop-simple"></i></button>` : ''}
       <button type="button" class="menu_button cs-icon-btn" id="${uploadId}" title="Загрузить файл"><i class="fa-solid fa-upload"></i></button>
     </div>`;
 
@@ -595,7 +610,12 @@ function settingsHtml() {
         <button type="button" class="menu_button cs-play" id="cs_preview" title="Показать на весь экран"><i class="fa-solid fa-expand"></i><span>На весь экран</span></button>
       </div>
 
-      <div class="cs-mini" id="cs_mini" title="Живое превью. Клик — на весь экран"></div>
+      <div class="cs-mini-wrap">
+        <div class="cs-mini" id="cs_mini" title="Живое превью. Клик — на весь экран"></div>
+        <div class="cs-dev-switch" role="group" aria-label="Предпросмотр">
+          ${Object.entries(FRAME_DEVICES).map(([key, d]) => `<button type="button" data-dev="${key}" title="${d.label}"><i class="fa-solid ${d.icon}"></i></button>`).join('')}
+        </div>
+      </div>
 
       <div class="cs-builds">
         <i class="fa-solid fa-layer-group cs-builds-ico" title="Сборки"></i>
@@ -617,7 +637,8 @@ function settingsHtml() {
         ${seg('bgMode', [['default', 'Тема'], ['custom', 'Файл'], ['slideshow', 'Слайдшоу']])}
 
         <div data-cs-show="bgMode=custom">
-          ${urlRow('bgUrl', 'cs_bg_upload')}
+          ${urlRow('bgUrl', 'cs_bg_upload', 'cs_bg_crop')}
+          <div class="cs-hint" id="cs_frame_state"></div>
           <div class="cs-hint">Картинка, GIF или видео (mp4/webm). Видео играет без звука по кругу.</div>
           <div class="cs-label">Лёгкое видео для телефона <span class="cs-dim">— необязательно</span></div>
           ${urlRow('bgUrlMobile', 'cs_bg_mobile_upload')}
@@ -638,13 +659,14 @@ function settingsHtml() {
           <div class="cs-label">Анимация картинки</div>
           ${seg('bgAnim', [['none', 'Нет'], ['kenburns', 'Наезд'], ['drift', 'Дрейф'], ['breathe', 'Дыхание']])}
           ${range('bgDim', 'Затемнение', 0, 90, 5, '%')}
+          <label class="checkbox_label"><input type="checkbox" data-cs-key="skipCrop"><span>Не предлагать кадр и обрезку при загрузке</span></label>
         </div>
       </div>
 
       <div class="cs-pane" data-pane="icon">
         ${seg('iconMode', [['default', 'Таверна'], ['custom', 'Своя'], ['none', 'Без иконки']])}
         <div data-cs-show="iconMode=custom">
-          ${urlRow('iconUrl', 'cs_icon_upload')}
+          ${urlRow('iconUrl', 'cs_icon_upload', 'cs_icon_crop')}
           <div class="cs-hint">PNG с прозрачностью, GIF или видео.</div>
         </div>
         <div data-cs-show="iconMode=default|custom">
@@ -677,7 +699,7 @@ function settingsHtml() {
           ${seg('plumbobColor', [['green', 'Зелёный'], ['yellow', 'Жёлтый'], ['orange', 'Оранж.'], ['red', 'Красный'], ['blue', 'Синий'], ['pink', 'Розовый']])}
         </div>
         <div data-cs-show="spinner=custom">
-          ${urlRow('spinnerUrl', 'cs_spinner_upload')}
+          ${urlRow('spinnerUrl', 'cs_spinner_upload', 'cs_spinner_crop')}
           <div class="cs-hint">PNG с прозрачностью, GIF, WebP или короткое видео.</div>
           <div class="cs-label">Что с ней делать</div>
           ${seg('spinnerAnim', [['spin', 'Крутить'], ['pulse', 'Пульс'], ['sway', 'Качать'], ['float', 'Парить'], ['blink', 'Мерцать'], ['flip', 'Монетка'], ['bounce', 'Прыгать'], ['none', 'Стоять']])}
@@ -731,7 +753,9 @@ function bindSettings() {
     let miniDirty = true;
     let miniTimer = null;
     let miniLife = null;
+    let miniDevice = screenDevice();
 
+    const fitMini = () => mini.style.setProperty('--k', String(mini.clientWidth / FRAME_DEVICES[miniDevice].w));
     const clearMini = () => {
         miniLife?.release();
         miniLife = null;
@@ -745,16 +769,16 @@ function bindSettings() {
         spin.className = 'fa-solid fa-gear fa-spin fa-3x cs-spin';
         stage.appendChild(spin);
         splashSkeleton(stage);
-        miniLife = decorate(stage, s, { force: true, small: true });
+        miniLife = decorate(stage, s, { force: true, small: true, device: miniDevice });
         mini.appendChild(stage);
-        mini.style.setProperty('--k', String(mini.clientWidth / STAGE_W));
+        fitMini();
     };
     const scheduleMini = () => {
         miniDirty = true;
         clearTimeout(miniTimer);
         if (miniVisible) miniTimer = setTimeout(renderMini, 250);
     };
-    new ResizeObserver(() => mini.style.setProperty('--k', String(mini.clientWidth / STAGE_W))).observe(mini);
+    new ResizeObserver(fitMini).observe(mini);
     // Out of sight (panel closed or scrolled away) the preview is torn down completely:
     // no video decoding, no slideshow timers, no particles. It is rebuilt when seen again.
     new IntersectionObserver(([entry]) => {
@@ -769,6 +793,18 @@ function bindSettings() {
     }).observe(mini);
     mini.addEventListener('click', preview);
 
+    const devButtons = [...root.querySelectorAll('.cs-dev-switch button')];
+    const showMiniDevice = key => {
+        miniDevice = key;
+        mini.classList.toggle('cs-is-phone', key === 'phone');
+        mini.style.setProperty('--cs-stage-w', `${FRAME_DEVICES[key].w}px`);
+        mini.style.setProperty('--cs-stage-h', `${FRAME_DEVICES[key].h}px`);
+        devButtons.forEach(b => b.classList.toggle('cs-on', b.dataset.dev === key));
+        if (miniVisible) renderMini();
+    };
+    devButtons.forEach(b => b.addEventListener('click', () => showMiniDevice(b.dataset.dev)));
+    showMiniDevice(miniDevice);
+
     // Edits go straight into the selected build: otherwise switching builds and back
     // silently threw the edits away while the dropdown still showed the build's name.
     const persist = () => {
@@ -779,6 +815,8 @@ function bindSettings() {
     // ---- generic bindings ----
     const changed = () => {
         sync();
+        pruneFrames();
+        renderFrameState();
         renderSpinTiles(['plumbob', 'custom']);
         scheduleMini();
         persist();
@@ -932,6 +970,74 @@ function bindSettings() {
     });
     showTab(currentTab);
 
+    // ---- frames and crops ----
+    const pruneFrames = () => {
+        const used = new Set([s.bgUrl, ...s.slides]);
+        for (const url of Object.keys(s.frames)) if (!used.has(url)) delete s.frames[url];
+    };
+    const frameState = root.querySelector('#cs_frame_state');
+    const renderFrameState = () => {
+        const set = Object.keys(FRAME_DEVICES).filter(k => s.frames[s.bgUrl]?.[k]).map(k => FRAME_DEVICES[k].label.toLowerCase());
+        frameState.textContent = set.length ? `Кадр настроен: ${set.join(', ')}.` : '';
+        frameState.hidden = !set.length;
+    };
+    renderFrameState();
+
+    /** The real splash for one background, small, with a frame the dialog can move. */
+    const framePreview = url => (host, device) => {
+        const stage = document.createElement('div');
+        const spin = document.createElement('div');
+        spin.className = 'fa-solid fa-gear fa-spin fa-3x cs-spin';
+        stage.appendChild(spin);
+        splashSkeleton(stage);
+        const look = {
+            ...s, bgMode: 'custom', bgUrl: url, bgUrlMobile: '', bgAnim: 'none', vfxList: [], tips: '',
+            frames: { [url]: { [device]: { px: 50, py: 50, z: 1 } } },
+        };
+        const life = decorate(stage, look, { force: true, small: true, device });
+        host.style.setProperty('--cs-stage-w', `${FRAME_DEVICES[device].w}px`);
+        host.style.setProperty('--cs-stage-h', `${FRAME_DEVICES[device].h}px`);
+        host.style.setProperty('--k', String(host.clientWidth / FRAME_DEVICES[device].w));
+        host.appendChild(stage);
+        return { wrap: stage.querySelector('.cs-frame'), release: () => life?.release() };
+    };
+    const editFrames = async url => {
+        const picked = await frameDialog(url, {
+            video: isVideo(url), frames: s.frames[url], device: miniDevice, preview: framePreview(url),
+        });
+        if (picked === undefined) return;
+        if (picked) s.frames[url] = picked;
+        else delete s.frames[url];
+        renderSlides();
+        changed();
+    };
+    root.querySelector('#cs_bg_crop').addEventListener('click', () => {
+        if (s.bgUrl) editFrames(s.bgUrl);
+        else toastr.info('Сначала выбери файл');
+    });
+
+    /** GIFs and videos would lose their motion on a canvas. */
+    const croppable = url => !isVideo(url) && !/\.gif(\?.*)?$/i.test(url);
+    const croppedFile = (blob, name) => new File([blob], `${name}.${blob.type === 'image/webp' ? 'webp' : 'png'}`, { type: blob.type });
+    const editCrop = async key => {
+        const url = s[key];
+        if (!url) return toastr.info('Сначала выбери файл');
+        if (!croppable(url)) return toastr.info('GIF и видео не обрезаются');
+        const blob = await frameDialog(url, { logo: true });
+        if (!blob) return;
+        try {
+            s[key] = await uploadFile(croppedFile(blob, 'crop'), MAX_SIDE_ICON);
+            refreshers.forEach(fn => fn());
+            changed();
+            toastr.success('Обрезано');
+        } catch (e) {
+            console.error('[SLAYintro] crop upload failed', e);
+            toastr.error('Не удалось сохранить обрезку');
+        }
+    };
+    root.querySelector('#cs_icon_crop').addEventListener('click', () => editCrop('iconUrl'));
+    root.querySelector('#cs_spinner_crop').addEventListener('click', () => editCrop('spinnerUrl'));
+
     // ---- slideshow list ----
     const slidesBox = root.querySelector('#cs_slides');
     const renderSlides = () => {
@@ -954,7 +1060,13 @@ function bindSettings() {
             const num = document.createElement('span');
             num.className = 'cs-slide-num';
             num.textContent = String(i + 1);
-            tile.append(media, num, del);
+            const crop = document.createElement('button');
+            crop.type = 'button';
+            crop.className = 'cs-slide-crop' + (s.frames[url] ? ' cs-on' : '');
+            crop.title = 'Кадр';
+            crop.innerHTML = '<i class="fa-solid fa-crop-simple"></i>';
+            crop.addEventListener('click', () => editFrames(url));
+            tile.append(media, num, crop, del);
             slidesBox.appendChild(tile);
         });
         const add = document.createElement('button');
@@ -994,9 +1106,28 @@ function bindSettings() {
         const files = [...(fileInput.files ?? [])];
         if (!files.length || !target) return;
         try {
+            const icon = ['iconUrl', 'spinnerUrl'].includes(target);
+            // Asked before the upload, so backing out leaves nothing behind in user/files.
+            let frames = null;
+            if (!s.skipCrop && (target === 'bgUrl' || (icon && SHRINKABLE.test(files[0].type)))) {
+                const local = URL.createObjectURL(files[0]);
+                try {
+                    const video = files[0].type.startsWith('video/');
+                    // The fragment only tells mediaElement that this blob is a video.
+                    const picked = icon
+                        ? await frameDialog(local, { logo: true })
+                        : await frameDialog(local, { video, device: miniDevice, preview: framePreview(video ? `${local}#.mp4` : local) });
+                    if (picked === undefined) return;
+                    if (icon && picked) files[0] = croppedFile(picked, 'crop');
+                    if (!icon) frames = picked;
+                } finally {
+                    URL.revokeObjectURL(local);
+                }
+            }
             const urls = [];
-            const maxSide = ['iconUrl', 'spinnerUrl'].includes(target) ? MAX_SIDE_ICON : MAX_SIDE_BG;
+            const maxSide = icon ? MAX_SIDE_ICON : MAX_SIDE_BG;
             for (const file of files) urls.push(await uploadFile(file, maxSide));
+            if (frames) s.frames[urls[0]] = frames;
             if (target === 'slides') {
                 s.slides.push(...urls);
                 renderSlides();
