@@ -1,0 +1,39 @@
+# Мусор операционных систем
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Редакторы
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Сборочный мусор, которого в расширении быть не должно
+node_modules/
+package-lock.json
+yarn.lock
+__pycache__/
+*.pyc
+
+# Локальные копии и черновики
+*_backup_*/
+*_backup_*.js
+*.bak
+*.orig
+*.rej
+*_DRAFT_*.md
+
+# Никаких личных картинок и видео: в репозитории только код и документация
+*.png
+*.webp
+*.zip
+*.log
+*.jpg
+*.gif
+*.mp4
+*.webm
+*.mov
+prev/

@@ -1,0 +1,522 @@
+/* Full-screen effects. --w/--h are the layer size in px-like units so keyframes can
+   travel the whole screen; the mini preview and tiles override them. --amt is 0..1. */
+
+.cs-stage .cs-vfx {
+    --w: 100vw;
+    --h: 105dvh;
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.cs-mini .cs-vfx {
+    --w: 1280px;
+    --h: 760px;
+}
+
+.cs-vtile .cs-vfx {
+    --w: 320px;
+    --h: 200px;
+}
+
+.cs-vfx .cs-p {
+    position: absolute;
+    left: var(--x);
+    top: var(--y, 0);
+}
+
+.cs-vfx .cs-p > i,
+.cs-vfx .cs-p > i > b {
+    display: block;
+}
+
+/* ---------- falling: snow, blizzard, sakura, leaves ---------- */
+.cs-vfx:is(.cs-vfx-snow, .cs-vfx-blizzard, .cs-vfx-sakura, .cs-vfx-leaves) .cs-p {
+    top: -24px;
+    animation: cs-fall var(--dur) linear var(--delay) infinite;
+}
+
+.cs-vfx:is(.cs-vfx-snow, .cs-vfx-blizzard, .cs-vfx-sakura, .cs-vfx-leaves) .cs-p > i {
+    animation: cs-sway var(--sway-dur) ease-in-out var(--delay) infinite alternate;
+}
+
+@keyframes cs-fall {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(var(--drift, 0px), var(--h), 0); }
+}
+
+@keyframes cs-sway {
+    from { transform: translateX(calc(var(--sway) * -0.5)); }
+    to { transform: translateX(calc(var(--sway) * 0.5)); }
+}
+
+.cs-vfx:is(.cs-vfx-snow, .cs-vfx-blizzard) .cs-p b {
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 255, 255, var(--o)) 0%, rgba(255, 255, 255, var(--o)) 35%, rgba(255, 255, 255, calc(var(--o) * 0.4)) 60%, transparent 75%);
+    box-shadow: 0 0 4px rgba(255, 255, 255, calc(var(--o) * 0.35));
+}
+
+/* Only the far flakes get a blur: blur(0) still costs a filter layer per flake. */
+.cs-vfx:is(.cs-vfx-snow, .cs-vfx-blizzard) .cs-p[style*='--blur'] b {
+    filter: blur(var(--blur));
+}
+
+.cs-vfx-blizzard::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(100deg, rgba(235, 242, 255, calc(var(--amt) * 0.14)), rgba(235, 242, 255, calc(var(--amt) * 0.05)));
+}
+
+.cs-vfx:is(.cs-vfx-sakura, .cs-vfx-leaves) .cs-p b {
+    width: var(--pw);
+    height: var(--ph);
+    animation: cs-flutter var(--spin-dur) linear infinite;
+}
+
+.cs-vfx-sakura .cs-p b {
+    background: var(--c);
+    border-radius: 80% 0 80% 0;
+    box-shadow: inset -1px -1px 0 rgba(242, 155, 187, 0.7);
+}
+
+.cs-vfx-leaves .cs-p b {
+    background: linear-gradient(135deg, transparent 46%, rgba(0, 0, 0, 0.28) 50%, transparent 54%), var(--c);
+    border-radius: 0 80% 0 80%;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes cs-flutter {
+    to { transform: rotate3d(var(--rx), var(--ry), 0.3, 360deg); }
+}
+
+/* ---------- rain, storm ---------- */
+.cs-vfx:is(.cs-vfx-rain, .cs-vfx-storm) .cs-p {
+    top: -40px;
+    animation: cs-rain var(--dur) linear var(--delay) infinite;
+}
+
+.cs-vfx:is(.cs-vfx-rain, .cs-vfx-storm) .cs-p b {
+    width: 1.5px;
+    height: var(--size);
+    background: linear-gradient(to bottom, transparent, rgba(220, 232, 255, var(--o)));
+    transform: rotate(12deg);
+}
+
+@keyframes cs-rain {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(calc(var(--h) * -0.21), var(--h), 0); }
+}
+
+.cs-vfx:is(.cs-vfx-rain, .cs-vfx-storm)::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 25, 45, 0.18);
+}
+
+.cs-vfx-storm::before {
+    background: rgba(10, 16, 32, calc(0.2 + var(--amt) * 0.2));
+}
+
+.cs-vfx-storm::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgb(225, 232, 255);
+    opacity: 0;
+    animation: cs-lightning 7s linear infinite;
+}
+
+@keyframes cs-lightning {
+    0%, 60% { opacity: 0; }
+    61% { opacity: calc(var(--amt) * 0.75); }
+    62% { opacity: 0.05; }
+    63.5% { opacity: calc(var(--amt) * 0.5); }
+    66%, 100% { opacity: 0; }
+}
+
+/* ---------- fog ---------- */
+.cs-fog {
+    position: absolute;
+    left: var(--fx);
+    top: var(--fy);
+    width: var(--fw);
+    height: var(--fh);
+    margin-top: calc(var(--fh) / -2);
+    background: radial-gradient(ellipse at center, rgba(215, 220, 232, 0.42) 0%, rgba(215, 220, 232, 0.18) 40%, transparent 70%);
+    opacity: var(--amt);
+    animation: cs-fog-drift var(--dur) ease-in-out var(--delay) infinite alternate;
+}
+
+@keyframes cs-fog-drift {
+    from { transform: translateX(-14%) scale(1); }
+    to { transform: translateX(14%) scale(1.08); }
+}
+
+/* ---------- fireflies, dust ---------- */
+.cs-vfx:is(.cs-vfx-fireflies, .cs-vfx-dust) .cs-p {
+    animation: cs-wander var(--dur) ease-in-out var(--delay) infinite;
+}
+
+@keyframes cs-wander {
+    0%, 100% { transform: translate(0, 0); }
+    33% { transform: translate(var(--ax), var(--ay)); }
+    66% { transform: translate(var(--bx), var(--by)); }
+}
+
+.cs-vfx-fireflies .cs-p b {
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    background: #f4ff9e;
+    box-shadow: 0 0 8px 3px rgba(210, 255, 110, 0.65), 0 0 20px 7px rgba(190, 255, 90, 0.22);
+    opacity: 0;
+    animation: cs-ff-pulse var(--pulse-dur) ease-in-out var(--pulse-delay) infinite alternate;
+}
+
+.cs-vfx-dust .cs-p b {
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    background: rgb(255, 234, 186);
+    box-shadow: 0 0 4px rgba(255, 220, 150, 0.6);
+    animation: cs-dust-pulse var(--pulse-dur) ease-in-out var(--pulse-delay) infinite alternate;
+}
+
+@keyframes cs-ff-pulse {
+    0%, 30% { opacity: 0; }
+    100% { opacity: var(--o); }
+}
+
+@keyframes cs-dust-pulse {
+    from { opacity: 0.1; }
+    to { opacity: var(--o); }
+}
+
+/* ---------- risers: embers, bubbles, smoke ---------- */
+.cs-vfx:is(.cs-vfx-embers, .cs-vfx-bubbles) .cs-p {
+    top: auto;
+    bottom: -24px;
+    opacity: 0;
+    animation: cs-rise var(--dur) ease-out var(--delay) infinite;
+}
+
+.cs-vfx:is(.cs-vfx-embers, .cs-vfx-bubbles) .cs-p > i {
+    animation: cs-sway var(--sway-dur) ease-in-out var(--delay) infinite alternate;
+}
+
+@keyframes cs-rise {
+    0% { transform: translate3d(0, 0, 0); opacity: 0; }
+    12% { opacity: var(--o); }
+    70% { opacity: calc(var(--o) * 0.7); }
+    100% { transform: translate3d(var(--drift, 0px), calc(var(--h) * var(--rise) / -100), 0); opacity: 0; }
+}
+
+.cs-vfx-embers::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 40%;
+    background: linear-gradient(to top, rgba(255, 110, 30, calc(var(--amt) * 0.22)), transparent);
+}
+
+.cs-vfx-embers .cs-p b {
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff6d6 0%, #ffc060 35%, #ff7a1f 70%, rgba(255, 80, 10, 0.4) 100%);
+    box-shadow: 0 0 10px 3px rgba(255, 120, 30, 0.65), 0 0 22px 6px rgba(255, 80, 10, 0.25);
+    animation: cs-flicker 0.7s ease-in-out var(--delay) infinite alternate;
+}
+
+@keyframes cs-flicker {
+    from { opacity: 1; }
+    to { opacity: 0.6; }
+}
+
+.cs-vfx-bubbles .cs-p b {
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.85) 0 9%, rgba(255, 255, 255, 0.1) 24%, rgba(170, 220, 255, 0.06) 60%, rgba(255, 255, 255, 0.2) 100%);
+}
+
+.cs-vfx-smoke .cs-p {
+    top: auto;
+    bottom: -160px;
+    opacity: 0;
+    animation: cs-smoke var(--dur) ease-out var(--delay) infinite;
+}
+
+.cs-vfx-smoke .cs-p b {
+    width: var(--size);
+    height: var(--size);
+    margin-left: calc(var(--size) / -2);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(185, 185, 195, 0.75), rgba(160, 160, 170, 0.3) 45%, transparent 70%);
+}
+
+@keyframes cs-smoke {
+    0% { transform: translate3d(0, 0, 0) scale(0.5); opacity: 0; }
+    25% { opacity: calc(var(--o) * var(--amt) * 1.4); }
+    100% { transform: translate3d(var(--drift), calc(var(--h) * var(--rise) / -100), 0) scale(2.3); opacity: 0; }
+}
+
+/* ---------- sparkles ---------- */
+.cs-vfx-sparkles .cs-p {
+    filter: drop-shadow(0 0 4px var(--c));
+}
+
+.cs-vfx-sparkles .cs-p b {
+    width: var(--size);
+    height: var(--size);
+    margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
+    background: var(--c);
+    clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+    transform: scale(0);
+    opacity: 0;
+    animation: cs-sparkle var(--dur) ease-in-out var(--delay) infinite;
+}
+
+@keyframes cs-sparkle {
+    0% { transform: scale(0) rotate(0); opacity: 0; }
+    50% { transform: scale(1) rotate(90deg); opacity: 1; }
+    100% { transform: scale(0) rotate(180deg); opacity: 0; }
+}
+
+/* ---------- runes ---------- */
+.cs-vfx-runes .cs-p b {
+    width: var(--size);
+    height: var(--size);
+    margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
+    opacity: 0;
+    filter: drop-shadow(0 0 6px rgba(240, 207, 122, 0.85));
+    animation: cs-rune-appear var(--dur) ease-in-out var(--delay) infinite;
+}
+
+.cs-vfx-runes .cs-p svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+}
+
+@keyframes cs-rune-appear {
+    0% { opacity: 0; transform: rotate(var(--rot)) scale(0.85); }
+    30% { opacity: 0.95; transform: rotate(var(--rot)) scale(1); }
+    70% { opacity: 0.85; }
+    100% { opacity: 0; transform: rotate(var(--rot)) scale(1.08); }
+}
+
+/* ---------- shooting stars ---------- */
+.cs-vfx-starfall .cs-p {
+    opacity: 0;
+    animation: cs-shoot var(--dur) linear var(--delay) infinite;
+}
+
+.cs-vfx-starfall .cs-p b {
+    width: var(--len);
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+    transform-origin: 0 50%;
+    transform: rotate(-24deg);
+}
+
+@keyframes cs-shoot {
+    0% { opacity: 0; transform: translate(0, 0); }
+    1% { opacity: 1; }
+    9% { opacity: 1; }
+    12% { opacity: 0; transform: translate(-380px, 170px); }
+    100% { opacity: 0; transform: translate(-380px, 170px); }
+}
+
+/* ---------- drops on glass ---------- */
+.cs-vfx-glass .cs-p b {
+    width: var(--pw);
+    height: var(--ph);
+    border-radius: 50% 50% 46% 46% / 55% 55% 45% 45%;
+    background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.65) 0 10%, rgba(255, 255, 255, 0.1) 28%, rgba(20, 30, 40, 0.2) 65%, rgba(255, 255, 255, 0.32) 100%);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 -1px 1px rgba(255, 255, 255, 0.25);
+    opacity: 0;
+    animation: cs-drop var(--dur) ease-in var(--delay) infinite;
+}
+
+@keyframes cs-drop {
+    0% { opacity: 0; transform: translateY(0) scale(0.5); }
+    10% { opacity: 1; transform: translateY(0) scale(1); }
+    55% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(var(--slide)) scale(0.9, 1.1); }
+}
+
+/* ---------- film: VHS, old film ---------- */
+.cs-vfx .cs-grain {
+    position: absolute;
+    inset: -50%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.9 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 160px;
+    opacity: calc(var(--amt) * 0.18);
+    animation: cs-grain 0.5s steps(5) infinite;
+}
+
+@keyframes cs-grain {
+    0% { transform: translate(0, 0); }
+    20% { transform: translate(-7%, 4%); }
+    40% { transform: translate(5%, -6%); }
+    60% { transform: translate(-3%, 8%); }
+    80% { transform: translate(8%, 2%); }
+    100% { transform: translate(0, 0); }
+}
+
+.cs-vfx-vhs .cs-scan {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.3) 0 1px, transparent 1px 3px);
+    opacity: calc(0.35 + var(--amt) * 0.65);
+}
+
+.cs-vfx-vhs .cs-track {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -15%;
+    height: 12%;
+    background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, calc(var(--amt) * 0.1)) 45%, rgba(255, 255, 255, calc(var(--amt) * 0.2)) 50%, transparent);
+    animation: cs-track 5s linear infinite;
+}
+
+@keyframes cs-track {
+    to { transform: translateY(calc(var(--h) * 1.2)); }
+}
+
+.cs-vfx-vhs .cs-osd {
+    position: absolute;
+    left: 5%;
+    top: 6%;
+    font: 700 28px/1 'Courier New', monospace;
+    letter-spacing: 0.06em;
+    color: #fff;
+    text-shadow: 2px 0 rgba(255, 0, 80, 0.6), -2px 0 rgba(0, 200, 255, 0.6);
+    opacity: calc(0.45 + var(--amt) * 0.55);
+}
+
+.cs-vfx-oldfilm .cs-sepia {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, calc(var(--amt) * 0.6)) 100%),
+        rgba(112, 80, 40, calc(var(--amt) * 0.24));
+}
+
+.cs-vfx-oldfilm .cs-flick {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    animation: cs-film-flick 0.24s steps(1) infinite;
+}
+
+@keyframes cs-film-flick {
+    0% { opacity: calc(var(--amt) * 0.05); }
+    33% { opacity: calc(var(--amt) * 0.13); }
+    66% { opacity: calc(var(--amt) * 0.02); }
+}
+
+.cs-vfx-oldfilm .cs-scratch {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--sx);
+    width: 1px;
+    background: rgba(255, 255, 240, 0.55);
+    opacity: 0;
+    animation: cs-scratch 3.4s steps(1) var(--d) infinite;
+}
+
+@keyframes cs-scratch {
+    0% { opacity: calc(var(--amt) * 0.8); transform: translateX(0); }
+    6% { opacity: calc(var(--amt) * 0.6); transform: translateX(18px); }
+    12% { opacity: 0; }
+    48% { opacity: calc(var(--amt) * 0.5); transform: translateX(-40px); }
+    54% { opacity: 0; }
+    80% { opacity: calc(var(--amt) * 0.7); transform: translateX(60px); }
+    84% { opacity: 0; }
+}
+
+/* Twice the screen, jumped around with transform: moving background-position
+   instead repainted the whole screen ten times a second. */
+.cs-vfx-oldfilm .cs-specks {
+    position: absolute;
+    inset: -50%;
+    background-image:
+        radial-gradient(circle, rgba(0, 0, 0, 0.7) 0 1.5px, transparent 2px),
+        radial-gradient(circle, rgba(255, 255, 240, 0.7) 0 1px, transparent 1.5px),
+        radial-gradient(circle, rgba(0, 0, 0, 0.6) 0 2px, transparent 2.5px);
+    background-size: 18.5% 14.5%, 11.5% 20.5%, 25.5% 16.5%;
+    opacity: var(--amt);
+    animation: cs-specks 0.4s steps(1) infinite;
+}
+
+@keyframes cs-specks {
+    0% { transform: translate(-9%, 4%); }
+    25% { transform: translate(13%, -11%); }
+    50% { transform: translate(-3%, 17%); }
+    75% { transform: translate(21%, 8%); }
+}
+
+/* ---------- light: vignette, rays ---------- */
+.cs-vfx-vignette .cs-vig {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, calc(var(--amt) * 0.9)) 100%);
+    animation: cs-vig 5s ease-in-out infinite alternate;
+}
+
+@keyframes cs-vig {
+    from { opacity: 0.55; }
+    to { opacity: 1; }
+}
+
+.cs-vfx-rays .cs-ray {
+    position: absolute;
+    top: -30%;
+    left: var(--rx);
+    width: var(--rw);
+    height: 170%;
+    transform-origin: top center;
+    transform: rotate(var(--rr));
+    background: linear-gradient(to bottom, rgba(255, 238, 200, calc(var(--amt) * 0.5)), rgba(255, 238, 200, calc(var(--amt) * 0.2)) 55%, transparent 90%);
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 35%, #000 65%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 35%, #000 65%, transparent);
+    animation: cs-ray var(--dur) ease-in-out var(--delay) infinite alternate;
+}
+
+@keyframes cs-ray {
+    from { opacity: 0.45; transform: rotate(calc(var(--rr) - 2deg)); }
+    to { opacity: 1; transform: rotate(calc(var(--rr) + 2deg)); }
+}
+
+/* ---------- phones & tablets: same look, cheaper paint ---------- */
+@media (max-width: 900px), (pointer: coarse) {
+    .cs-stage .cs-vfx .cs-p,
+    .cs-stage .cs-vfx .cs-p b {
+        filter: none !important;
+    }
+
+    .cs-vfx-embers .cs-p b {
+        box-shadow: 0 0 8px 2px rgba(255, 120, 30, 0.6);
+    }
+
+    .cs-vfx-fireflies .cs-p b {
+        box-shadow: 0 0 8px 3px rgba(210, 255, 110, 0.6);
+    }
+}

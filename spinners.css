@@ -1,0 +1,551 @@
+/* Loading badges. Selectors use :is(#load-spinner, .cs-spin) to reach id specificity:
+   core styles #load-spinner by id (size var, position: static). */
+
+.cs-stage :is(#load-spinner, .cs-spin) {
+    scale: var(--cs-spin-scale, 1);
+    margin-block: calc((var(--cs-spin-scale, 1) - 1) * 28px);
+}
+
+.cs-stage :is(#load-spinner, .cs-spin).cs-spin-art {
+    --spinner-size: 56px;
+    position: relative !important;
+    font-size: 0;
+    animation: none !important;
+}
+
+.cs-stage :is(#load-spinner, .cs-spin).cs-spin-art::before {
+    content: none !important;
+}
+
+.cs-stage :is(#load-spinner, .cs-spin):is(.cs-art-k-cassette, .cs-art-k-nosignal) {
+    width: calc(var(--spinner-size) * 1.5);
+}
+
+.cs-stage :is(#load-spinner, .cs-spin).cs-art-k-rec {
+    width: auto;
+    height: auto;
+}
+
+.cs-stage :is(#load-spinner, .cs-spin).cs-art-k-custom {
+    --spinner-size: 64px;
+}
+
+.cs-art {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+
+/* --- Heart / flower / sakura / leaves --- */
+.cs-art-heart { animation: cs-beat 1.1s ease-in-out infinite; }
+.cs-art-flower { animation: cs-spin 5s linear infinite; }
+.cs-art-sakura { animation: cs-sway-rot 3.2s ease-in-out infinite alternate; }
+
+@keyframes cs-beat {
+    0% { transform: scale(1); }
+    14% { transform: scale(1.18); }
+    28% { transform: scale(1); }
+    42% { transform: scale(1.12); }
+    70%, 100% { transform: scale(1); }
+}
+
+@keyframes cs-sway-rot {
+    from { transform: rotate(-10deg); }
+    to { transform: rotate(12deg); }
+}
+
+.cs-petal {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 12px;
+    height: 9px;
+    margin: -4px 0 0 -6px;
+    background: #ffc9da;
+    border-radius: 80% 0 80% 0;
+    box-shadow: inset -1px -1px 0 rgba(242, 155, 187, 0.7);
+    opacity: 0;
+    animation: cs-petal-fall 3.2s ease-in var(--d) infinite;
+}
+
+@keyframes cs-petal-fall {
+    0% { opacity: 0; transform: translate(0, 0) rotate(0); }
+    10% { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--px), 72px) rotate(var(--pr)); }
+}
+
+.cs-leaf {
+    position: absolute;
+    left: var(--lx);
+    top: -16px;
+    width: 22px;
+    height: 22px;
+    margin-left: -11px;
+    opacity: 0;
+    animation: cs-leaf-fall 3.6s linear var(--d) infinite;
+}
+
+.cs-leaf svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+    animation: cs-leaf-swing 1.2s ease-in-out var(--d) infinite alternate;
+}
+
+@keyframes cs-leaf-fall {
+    0% { opacity: 0; transform: translateY(0); }
+    15% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(78px); }
+}
+
+@keyframes cs-leaf-swing {
+    from { transform: translateX(-10px) rotate(-35deg); }
+    to { transform: translateX(10px) rotate(35deg); }
+}
+
+/* --- Butterfly --- */
+.cs-art-butterfly { animation: cs-bob 2.4s ease-in-out infinite alternate; }
+
+.cs-art-butterfly .cs-wing {
+    transform-box: fill-box;
+    transform-origin: right center;
+    animation: cs-flap 0.45s ease-in-out infinite alternate;
+}
+
+@keyframes cs-flap {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0.25); }
+}
+
+@keyframes cs-bob {
+    from { transform: translateY(-3px) rotate(-4deg); }
+    to { transform: translateY(3px) rotate(4deg); }
+}
+
+/* --- Constellation --- */
+.cs-art-stars .cs-twinkle {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: cs-twinkle 2.2s ease-in-out var(--d) infinite;
+}
+
+.cs-art-stars .cs-const-lines {
+    animation: cs-breathe-op 4s ease-in-out infinite alternate;
+}
+
+@keyframes cs-twinkle {
+    0%, 100% { transform: scale(0.6); opacity: 0.5; }
+    50% { transform: scale(1.25); opacity: 1; }
+}
+
+@keyframes cs-breathe-op {
+    from { opacity: 0.35; }
+    to { opacity: 1; }
+}
+
+/* --- Plumbob: two crossed faces spinning in 3D read as a solid crystal --- */
+.cs-pb {
+    --pb-l: #5ef06a;
+    --pb-d: #1f9a35;
+    --pb-h: #c4ffbf;
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    perspective: 220px;
+    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--pb-l) 55%, transparent)) drop-shadow(0 3px 6px rgba(0, 0, 0, 0.4));
+    animation: cs-bob 1.8s ease-in-out infinite alternate;
+}
+
+.cs-pb-yellow { --pb-l: #ffe45c; --pb-d: #c39b00; --pb-h: #fff6b8; }
+.cs-pb-orange { --pb-l: #ffa94d; --pb-d: #c25e0a; --pb-h: #ffdcb5; }
+.cs-pb-red { --pb-l: #ff6b5e; --pb-d: #b3241a; --pb-h: #ffc6bf; }
+.cs-pb-blue { --pb-l: #6ec8ff; --pb-d: #1f6fb3; --pb-h: #d2efff; }
+.cs-pb-pink { --pb-l: #ff8fd0; --pb-d: #c23a8a; --pb-h: #ffd6ef; }
+
+.cs-pb-spin {
+    position: absolute;
+    inset: 0 18%;
+    transform-style: preserve-3d;
+    animation: cs-pb-rot 3s linear infinite;
+}
+
+.cs-pb-face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: visible;
+}
+
+.cs-pb-face svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.cs-pb-b {
+    transform: rotateY(90deg);
+}
+
+@keyframes cs-pb-rot {
+    to { transform: rotateY(360deg); }
+}
+
+/* --- Potion --- */
+.cs-art-potion .cs-potion-liquid {
+    transform-origin: 32px 42px;
+    animation: cs-slosh 2.6s ease-in-out infinite alternate;
+}
+
+.cs-art-potion .cs-potion-glow {
+    animation: cs-glow-op 2s ease-in-out infinite alternate;
+}
+
+.cs-art-potion .cs-bub {
+    opacity: 0;
+    animation: cs-bub-rise 2.4s ease-in var(--d) infinite;
+}
+
+@keyframes cs-slosh {
+    from { transform: rotate(-5deg); }
+    to { transform: rotate(5deg); }
+}
+
+@keyframes cs-glow-op {
+    from { opacity: 0.1; }
+    to { opacity: 0.32; }
+}
+
+@keyframes cs-bub-rise {
+    0% { opacity: 0; transform: translateY(0); }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-14px); }
+}
+
+/* --- Candle --- */
+.cs-art-candle .cs-flame,
+.cs-art-cauldron .cs-flame {
+    transform-origin: 32px 27px;
+    animation: cs-flicker-flame 0.9s ease-in-out infinite alternate;
+}
+
+.cs-art-cauldron .cs-flame-sm {
+    transform-origin: var(--fx) 62px;
+    animation-duration: 0.5s;
+}
+
+.cs-art-candle .cs-candle-glow {
+    transform-origin: 32px 20px;
+    animation: cs-candle-glow 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes cs-flicker-flame {
+    0% { transform: scale(1, 1) rotate(0); }
+    30% { transform: scale(0.94, 1.08) rotate(-3deg); }
+    60% { transform: scale(1.04, 0.95) rotate(2deg); }
+    100% { transform: scale(0.97, 1.05) rotate(-1deg); }
+}
+
+@keyframes cs-candle-glow {
+    from { opacity: 0.12; transform: scale(0.92); }
+    to { opacity: 0.28; transform: scale(1.06); }
+}
+
+/* --- Rune circle --- */
+.cs-art-runes {
+    filter: drop-shadow(0 0 4px rgba(233, 196, 106, 0.6));
+}
+
+.cs-art-runes .cs-rune-outer {
+    transform-origin: 32px 32px;
+    animation: cs-spin 14s linear infinite;
+}
+
+.cs-art-runes .cs-rune-inner {
+    transform-origin: 32px 32px;
+    animation: cs-spin 9s linear infinite reverse;
+}
+
+.cs-art-runes .cs-rune-g {
+    animation: cs-rune-flash 2.4s ease-in-out var(--d) infinite;
+}
+
+@keyframes cs-rune-flash {
+    0%, 100% { opacity: 0.35; }
+    15% { opacity: 1; }
+    40% { opacity: 0.35; }
+}
+
+/* --- Crystal ball --- */
+.cs-art-crystal .cs-mist-a {
+    transform-origin: 32px 27px;
+    animation: cs-spin 6s linear infinite;
+}
+
+.cs-art-crystal .cs-mist-b {
+    transform-origin: 32px 27px;
+    animation: cs-spin 9s linear infinite reverse;
+}
+
+.cs-art-crystal .cs-crystal-core {
+    transform-origin: 32px 27px;
+    animation: cs-candle-glow 2.2s ease-in-out infinite alternate;
+}
+
+/* --- Quill writing a squiggle --- */
+.cs-art-quill .cs-ink {
+    stroke-dasharray: 100;
+    animation: cs-write 3.2s linear infinite;
+}
+
+.cs-art-quill .cs-quill {
+    animation: cs-quill-move 3.2s linear infinite;
+}
+
+@keyframes cs-write {
+    0% { stroke-dashoffset: 100; opacity: 1; }
+    70% { stroke-dashoffset: 0; opacity: 1; }
+    85% { stroke-dashoffset: 0; opacity: 1; }
+    100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+@keyframes cs-quill-move {
+    0% { transform: translate(8px, 50px); }
+    8.75% { transform: translate(14px, 46px); }
+    17.5% { transform: translate(20px, 50px); }
+    26.25% { transform: translate(26px, 54px); }
+    35% { transform: translate(32px, 50px); }
+    43.75% { transform: translate(38px, 46px); }
+    52.5% { transform: translate(44px, 50px); }
+    61.25% { transform: translate(50px, 54px); }
+    70%, 85% { transform: translate(56px, 50px); }
+    100% { transform: translate(8px, 50px); }
+}
+
+/* --- Steam (cauldron, cup) and cauldron bubbles --- */
+.cs-steam {
+    opacity: 0;
+    animation: cs-steam 2.4s ease-out var(--d) infinite;
+}
+
+@keyframes cs-steam {
+    0% { opacity: 0; transform: translateY(4px); }
+    30% { opacity: 0.9; }
+    100% { opacity: 0; transform: translateY(-8px); }
+}
+
+.cs-art-cauldron .cs-pop {
+    transform-box: fill-box;
+    transform-origin: center;
+    opacity: 0;
+    animation: cs-pop 1.8s ease-out var(--d) infinite;
+}
+
+@keyframes cs-pop {
+    0% { transform: scale(0); opacity: 0; }
+    40% { transform: scale(1); opacity: 1; }
+    55% { transform: scale(1.4); opacity: 0; }
+    100% { opacity: 0; }
+}
+
+/* --- Moon phases --- */
+.cs-moon {
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 35% 38%, rgba(0, 0, 0, 0.12) 0 9%, transparent 10%),
+        radial-gradient(circle at 62% 60%, rgba(0, 0, 0, 0.1) 0 12%, transparent 13%),
+        radial-gradient(circle at 58% 28%, rgba(0, 0, 0, 0.08) 0 6%, transparent 7%),
+        #f1e9c9;
+    box-shadow: 0 0 14px rgba(255, 240, 200, 0.4);
+}
+
+.cs-moon-shadow {
+    position: absolute;
+    inset: -1px;
+    border-radius: 50%;
+    background: rgba(14, 16, 30, 0.94);
+    animation: cs-moon 6s linear infinite;
+}
+
+@keyframes cs-moon {
+    0% { transform: translateX(0); }
+    50% { transform: translateX(105%); }
+    50.01% { transform: translateX(-105%); }
+    100% { transform: translateX(0); }
+}
+
+/* --- Cassette --- */
+.cs-art-cassette .cs-reel {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: cs-spin 1.6s linear infinite;
+}
+
+/* --- REC with a running timecode (CSS counters driven by animated integers) --- */
+@property --cs-sec {
+    syntax: '<integer>';
+    inherits: false;
+    initial-value: 0;
+}
+
+@property --cs-min {
+    syntax: '<integer>';
+    inherits: false;
+    initial-value: 0;
+}
+
+.cs-rec {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font: 600 18px/1 'Courier New', monospace;
+    letter-spacing: 0.08em;
+    color: #fff;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
+}
+
+.cs-rec-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ff2a2a;
+    box-shadow: 0 0 8px rgba(255, 40, 40, 0.8);
+    animation: cs-blink 1s steps(1) infinite;
+}
+
+.cs-rec-tc {
+    animation: cs-tc-sec 60s steps(60) infinite, cs-tc-min 3600s steps(60) infinite;
+    counter-reset: m var(--cs-min) s var(--cs-sec);
+}
+
+.cs-rec-tc::before {
+    content: '0:' counter(m, decimal-leading-zero) ':' counter(s, decimal-leading-zero);
+}
+
+@keyframes cs-tc-sec {
+    to { --cs-sec: 60; }
+}
+
+@keyframes cs-tc-min {
+    to { --cs-min: 60; }
+}
+
+@keyframes cs-blink {
+    0% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* --- No signal --- */
+.cs-art-nosignal .cs-ns-roll {
+    animation: cs-ns-roll 2.2s linear infinite;
+}
+
+.cs-art-nosignal .cs-ns-screen {
+    animation: cs-jitter 0.3s steps(2) infinite;
+}
+
+.cs-art-nosignal .cs-ns-text {
+    animation: cs-blink 1.2s steps(1) infinite;
+}
+
+@keyframes cs-ns-roll {
+    from { transform: translateY(0); }
+    to { transform: translateY(38px); }
+}
+
+@keyframes cs-jitter {
+    0% { transform: translateX(0); }
+    50% { transform: translateX(0.8px); }
+    100% { transform: translateX(-0.6px); }
+}
+
+/* --- Hourglass: sand runs, then the glass flips --- */
+.cs-art-hourglass .cs-hg {
+    transform-origin: 32px 32px;
+    animation: cs-hg-flip 4s ease-in-out infinite;
+}
+
+.cs-art-hourglass .cs-sand-top {
+    transform-origin: 32px 28px;
+    animation: cs-sand-top 4s linear infinite;
+}
+
+.cs-art-hourglass .cs-sand-bot {
+    transform-origin: 32px 52px;
+    animation: cs-sand-bot 4s linear infinite;
+}
+
+.cs-art-hourglass .cs-sand-stream {
+    animation: cs-sand-stream 4s linear infinite;
+}
+
+@keyframes cs-hg-flip {
+    0%, 80% { transform: rotate(0); }
+    100% { transform: rotate(180deg); }
+}
+
+@keyframes cs-sand-top {
+    0% { transform: scale(1); }
+    78%, 100% { transform: scale(0); }
+}
+
+@keyframes cs-sand-bot {
+    0% { transform: scale(0); }
+    78%, 100% { transform: scale(1); }
+}
+
+@keyframes cs-sand-stream {
+    0%, 76% { opacity: 1; }
+    78%, 100% { opacity: 0; }
+}
+
+/* --- Custom picture --- */
+.cs-art-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+
+.cs-cust-spin { animation: cs-spin 2.4s linear infinite; }
+.cs-cust-pulse { animation: cs-beat 1.2s ease-in-out infinite; }
+.cs-cust-sway { animation: cs-sway-rot 1.6s ease-in-out infinite alternate; }
+.cs-cust-float { animation: cs-float 2s ease-in-out infinite alternate; }
+.cs-cust-blink { animation: cs-breathe-op 1.1s ease-in-out infinite alternate; }
+.cs-cust-flip { animation: cs-flip 2.4s linear infinite; }
+.cs-cust-bounce { animation: cs-bounce 0.9s cubic-bezier(0.3, 0, 0.6, 1) infinite alternate; }
+
+@keyframes cs-flip {
+    to { transform: perspective(200px) rotateY(360deg); }
+}
+
+@keyframes cs-bounce {
+    from { transform: translateY(6px) scale(1.05, 0.95); }
+    to { transform: translateY(-10px) scale(0.97, 1.03); }
+}
+
+.cs-custom-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border: 2px dashed currentColor;
+    border-radius: 10px;
+    opacity: 0.6;
+    font-size: 22px;
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+    .cs-pb {
+        filter: drop-shadow(0 0 6px color-mix(in srgb, var(--pb-l) 55%, transparent));
+    }
+}

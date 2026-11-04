@@ -1,0 +1,838 @@
+@import url('spinners.css');
+@import url('vfx.css');
+
+/* ============================================================
+   Stage: the splash itself (real init overlay, full-screen
+   preview and the mini preview all share these rules)
+   ============================================================ */
+
+/* Stretch the loader popup to the whole viewport while our splash is inside it */
+.popup:has(#loader.cs-stage) {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    overflow: hidden;
+}
+
+.popup:has(#loader.cs-stage)::backdrop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: transparent;
+}
+
+.popup:has(#loader.cs-stage) .popup-body,
+.popup:has(#loader.cs-stage) .popup-content {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.cs-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2.5rem;
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+}
+
+/* Our own background is dark; over the theme's default one the text keeps the theme colour. */
+.cs-stage.cs-has-bg {
+    color: #f2ece0;
+}
+
+#loader.cs-stage {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+}
+
+/* Fade in only the new layers: a whole-stage fade would hold the logo and text
+   invisible until every effect layer is rasterized. */
+.cs-stage > :is(.cs-bg, .cs-vfx) {
+    animation: cs-fade-in 0.45s ease-out;
+}
+
+/* Background layer */
+.cs-stage .cs-bg {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: #000;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.cs-stage .cs-bg-media {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.cs-stage .cs-bg::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.55) 100%),
+        rgba(0, 0, 0, var(--cs-dim, 0.35));
+}
+
+/* Slideshow: stacked slides, crossfade */
+.cs-stage .cs-slide {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity var(--cs-fade, 1.5s) ease-in-out;
+}
+
+.cs-stage .cs-slide.cs-on {
+    opacity: 1;
+}
+
+.cs-stage .cs-slide.cs-leaving {
+    opacity: 0;
+}
+
+/* Image animation: single picture loops forever */
+.cs-bg-single .cs-anim-kenburns { animation: cs-kb 22s ease-in-out infinite alternate; }
+.cs-bg-single .cs-anim-drift { animation: cs-drift 26s ease-in-out infinite alternate; }
+.cs-bg-single .cs-anim-breathe { animation: cs-breathe 7s ease-in-out infinite alternate; }
+
+/* Image animation: slides play once per appearance (keeps moving while fading out) */
+.cs-slide:is(.cs-on, .cs-leaving) .cs-anim-kenburns { animation: cs-kb var(--cs-slide-dur) linear forwards; }
+.cs-slide.cs-alt:is(.cs-on, .cs-leaving) .cs-anim-kenburns { animation-name: cs-kb-out; }
+.cs-slide:is(.cs-on, .cs-leaving) .cs-anim-drift { animation: cs-drift var(--cs-slide-dur) linear forwards; }
+.cs-slide.cs-alt:is(.cs-on, .cs-leaving) .cs-anim-drift { animation-direction: reverse; }
+.cs-slide .cs-anim-breathe { animation: cs-breathe 7s ease-in-out infinite alternate; }
+
+@keyframes cs-kb {
+    from { transform: scale(1) translate(0, 0); }
+    to { transform: scale(1.14) translate(-2%, -1.5%); }
+}
+
+@keyframes cs-kb-out {
+    from { transform: scale(1.14) translate(2%, 1%); }
+    to { transform: scale(1) translate(0, 0); }
+}
+
+@keyframes cs-drift {
+    from { transform: scale(1.12) translateX(-3.5%); }
+    to { transform: scale(1.12) translateX(3.5%); }
+}
+
+@keyframes cs-breathe {
+    from { transform: scale(1); }
+    to { transform: scale(1.05); }
+}
+
+/* Icon */
+.cs-stage .cs-icon {
+    width: min(var(--cs-icon-size, 150px), 85%);
+    max-height: 45%;
+    height: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.6));
+}
+
+.cs-stage .splash-logo {
+    width: min(var(--cs-icon-size, 150px), 50%);
+}
+
+.cs-stage .cs-icon-float { animation: cs-float 4s ease-in-out infinite alternate; }
+.cs-stage .cs-icon-pulse { animation: cs-pulse 2.6s ease-in-out infinite; }
+.cs-stage .cs-icon-glow { animation: cs-glow 3.2s ease-in-out infinite alternate; }
+
+@keyframes cs-float {
+    from { transform: translateY(-7px); }
+    to { transform: translateY(7px); }
+}
+
+@keyframes cs-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.045); }
+}
+
+@keyframes cs-glow {
+    from { filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 2px rgba(255, 240, 210, 0.1)); }
+    to { filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 16px rgba(255, 240, 210, 0.55)); }
+}
+
+/* Text */
+.cs-stage .splash-message {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 500;
+}
+
+.cs-stage.cs-has-bg .splash-message,
+.cs-stage.cs-has-bg .cs-tip {
+    color: #f2ece0;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+.cs-stage .cs-tip {
+    margin-top: -1.5rem;
+    max-width: min(640px, 85%);
+    text-align: center;
+    font-style: italic;
+    opacity: 0;
+}
+
+.cs-stage .cs-tip.cs-tip-in {
+    animation: cs-tip 0.6s ease-out forwards;
+}
+
+/* Spinner. Core's #load-spinner must stay in the DOM (it reads its transition for the fade-out) */
+.cs-stage .cs-spin {
+    --spinner-size: 2em;
+    width: var(--spinner-size);
+    height: var(--spinner-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: static;
+}
+
+.cs-stage.cs-spinner-none .cs-spin {
+    visibility: hidden;
+}
+
+/* :is(#load-spinner, …) lifts these to id specificity: core sets --spinner-size on #load-spinner */
+.cs-stage.cs-spinner-ring :is(#load-spinner, .cs-spin) {
+    --spinner-size: 40px;
+    font-size: 0;
+    animation: none;
+}
+
+.cs-stage.cs-spinner-ring .cs-spin::before {
+    content: '';
+    width: var(--spinner-size);
+    height: var(--spinner-size);
+    border-radius: 50%;
+    border: 3px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-top-color: currentColor;
+    animation: cs-spin 0.9s linear infinite;
+    box-sizing: border-box;
+}
+
+@keyframes cs-spin {
+    to { transform: rotate(360deg); }
+}
+
+
+@keyframes cs-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes cs-tip {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 0.85; transform: none; }
+}
+
+/* Phones: an animated drop-shadow repaints the logo every frame, a fixed one costs nothing. */
+@media (max-width: 900px), (pointer: coarse) {
+    .cs-stage .cs-icon-glow {
+        animation: none;
+        filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 10px rgba(255, 240, 210, 0.4));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cs-stage [class*='cs-anim-'],
+    .cs-stage [class*='cs-icon-'] {
+        animation: none !important;
+    }
+
+    .cs-stage .cs-vfx {
+        display: none;
+    }
+}
+
+/* ============================================================
+   Settings panel
+   ============================================================ */
+
+.cs-settings {
+    --cs-accent: var(--SmartThemeQuoteColor, #e18a24);
+    --cs-line: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
+    --cs-soft: color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 7%, transparent);
+}
+
+.cs-settings .cs-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 6px;
+}
+
+.cs-settings [hidden] {
+    display: none !important;
+}
+
+/* Top row: switch + full-screen button */
+.cs-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.cs-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    font-weight: 600;
+}
+
+.cs-switch input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.cs-switch-track {
+    width: 34px;
+    height: 18px;
+    border-radius: 9px;
+    background: var(--cs-soft);
+    border: 1px solid var(--cs-line);
+    position: relative;
+    transition: background 0.2s;
+    flex: none;
+}
+
+.cs-switch-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--SmartThemeBodyColor, #ddd);
+    transition: transform 0.2s;
+}
+
+.cs-switch input:checked + .cs-switch-track {
+    background: var(--cs-accent);
+    border-color: var(--cs-accent);
+}
+
+.cs-switch input:checked + .cs-switch-track .cs-switch-thumb {
+    transform: translateX(16px);
+}
+
+.cs-settings .cs-play {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 4px 10px;
+    white-space: nowrap;
+}
+
+/* Mini preview */
+.cs-mini {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid var(--cs-line);
+    background: var(--SmartThemeBlurTintColor, #111);
+    cursor: zoom-in;
+    transition: opacity 0.2s, filter 0.2s;
+}
+
+.cs-mini > .cs-stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1280px;
+    height: 720px;
+    transform-origin: 0 0;
+    transform: scale(var(--k, 0.3));
+    pointer-events: none;
+}
+
+.cs-settings .cs-off .cs-mini {
+    opacity: 0.45;
+    filter: grayscale(0.7);
+}
+
+/* Builds row */
+.cs-builds {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.cs-builds select {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
+
+.cs-builds-ico {
+    opacity: 0.6;
+    width: 1.2em;
+    text-align: center;
+}
+
+.cs-settings .cs-icon-btn {
+    margin: 0;
+    width: 32px;
+    height: 30px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+}
+
+/* Tabs */
+.cs-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--cs-line);
+    margin-top: 2px;
+}
+
+.cs-tabs button {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: 6px 2px 5px;
+    font-size: 0.8em;
+    white-space: nowrap;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    color: inherit;
+    opacity: 0.6;
+    cursor: pointer;
+    font: inherit;
+    transition: opacity 0.15s, border-color 0.15s;
+}
+
+.cs-tabs button:hover {
+    opacity: 0.9;
+}
+
+.cs-tabs button.active {
+    opacity: 1;
+    border-bottom-color: var(--cs-accent);
+}
+
+.cs-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cs-pane > div:not(.cs-seg) {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Segmented control */
+.cs-seg {
+    display: flex;
+    padding: 2px;
+    gap: 2px;
+    border-radius: 7px;
+    background: var(--cs-soft);
+    border: 1px solid var(--cs-line);
+}
+
+.cs-seg button {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 4px;
+    border: none;
+    border-radius: 5px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.92em;
+    opacity: 0.7;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.cs-seg button:hover {
+    opacity: 1;
+}
+
+.cs-seg button.active {
+    opacity: 1;
+    background: color-mix(in srgb, var(--cs-accent) 28%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cs-accent) 55%, transparent);
+}
+
+/* Spinner picker: tiles with live mini spinners */
+.cs-seg.cs-spinpick {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 4px;
+    padding: 4px;
+}
+
+.cs-spinpick button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 2px 5px;
+    overflow: hidden;
+    font-size: 0.8em;
+}
+
+.cs-spinpick .cs-tilebox {
+    width: 100%;
+    height: 40px;
+    gap: 0;
+    color: inherit;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.cs-spinpick .cs-tilebox :is(#load-spinner, .cs-spin) {
+    scale: 0.55;
+    margin: 0;
+    font-size: 16px;
+}
+
+.cs-spinpick .cs-tilebox :is(#load-spinner, .cs-spin).cs-spin-art {
+    font-size: 0;
+}
+
+.cs-spinpick .cs-tilebox.cs-spinner-ring .cs-spin::before {
+    border-color: color-mix(in srgb, currentColor 25%, transparent);
+    border-top-color: currentColor;
+}
+
+/* Picker tiles hold a still frame; only the hovered and the selected ones move.
+   ~20 live effects at once were 400+ endless animations while the tab was open. */
+.cs-spinpick button:not(:hover, :focus-visible, .active) *,
+.cs-spinpick button:not(:hover, :focus-visible, .active) *::before,
+.cs-spinpick button:not(:hover, :focus-visible, .active) *::after,
+.cs-vbtn:not(:hover, :focus-visible, .active) .cs-vtile *,
+.cs-vbtn:not(:hover, :focus-visible, .active) .cs-vtile *::before,
+.cs-vbtn:not(:hover, :focus-visible, .active) .cs-vtile *::after {
+    animation-play-state: paused !important;
+}
+
+.cs-pick-group {
+    grid-column: 1 / -1;
+    margin: 4px 2px 0;
+    font-size: 0.72em;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.5;
+}
+
+.cs-pick-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* VFX picker: live tiles, multi-select */
+.cs-vpick {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 6px;
+}
+
+.cs-vbtn {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--cs-line);
+    border-radius: 7px;
+    background: var(--cs-soft);
+    color: inherit;
+    font: inherit;
+    font-size: 0.8em;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.cs-vbtn:hover {
+    opacity: 1;
+}
+
+.cs-vbtn.active {
+    opacity: 1;
+    border-color: var(--cs-accent);
+    box-shadow: 0 0 0 1px var(--cs-accent);
+}
+
+.cs-vtile {
+    position: relative;
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    border-radius: 5px;
+    overflow: hidden;
+    background: linear-gradient(160deg, #2a3a5c, #0c1220 75%);
+    pointer-events: none;
+}
+
+.cs-vtile-stage {
+    position: absolute !important;
+    left: 0;
+    top: 0;
+    width: 320px;
+    height: 200px;
+    transform-origin: 0 0;
+    transform: scale(var(--vk, 0.3));
+}
+
+/* Picker tiles are frozen: a paused fade-in would hold the whole layer at opacity 0. */
+.cs-vtile-stage > .cs-vfx {
+    animation: none;
+}
+
+.cs-vcheck {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--cs-accent);
+    color: #fff;
+    font-size: 10px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.cs-vbtn.active .cs-vcheck {
+    display: flex;
+}
+
+.cs-vsel {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.cs-vrow {
+    display: grid;
+    grid-template-columns: minmax(70px, auto) 1fr 3.2em 22px;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9em;
+}
+
+.cs-vrow input[type='range'] {
+    width: 100%;
+    min-width: 0;
+}
+
+.cs-vrow-del {
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 50%;
+    background: var(--cs-soft);
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.cs-vrow-del:hover {
+    opacity: 1;
+    background: #b3322a;
+    color: #fff;
+}
+
+/* Fields */
+.cs-label {
+    font-size: 0.9em;
+    opacity: 0.75;
+    margin-bottom: -4px;
+}
+
+.cs-dim {
+    opacity: 0.7;
+}
+
+.cs-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+}
+
+.cs-field-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9em;
+    opacity: 0.85;
+}
+
+.cs-val {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.8;
+}
+
+.cs-field input[type='range'] {
+    width: 100%;
+}
+
+.cs-url {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 5px;
+    align-items: center;
+}
+
+.cs-url .text_pole {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
+
+.cs-settings textarea.text_pole,
+.cs-settings input.text_pole {
+    margin: 0;
+}
+
+.cs-hint {
+    font-size: 0.82em;
+    opacity: 0.55;
+    line-height: 1.35;
+}
+
+.cs-foot {
+    border-top: 1px solid var(--cs-line);
+    padding-top: 8px;
+}
+
+.cs-settings .checkbox_label {
+    margin: 0;
+}
+
+/* Slideshow tiles */
+.cs-slides {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 6px;
+}
+
+.cs-slide-tile {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--cs-line);
+    background: #000;
+}
+
+.cs-slide-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.cs-slide-num {
+    position: absolute;
+    left: 4px;
+    bottom: 3px;
+    font-size: 0.75em;
+    font-weight: 600;
+    color: #fff;
+    text-shadow: 0 1px 3px #000;
+}
+
+.cs-slide-del {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s;
+}
+
+.cs-slide-tile:hover .cs-slide-del,
+.cs-slide-del:focus-visible {
+    opacity: 1;
+}
+
+.cs-slide-del:hover {
+    background: #b3322a;
+}
+
+@media (hover: none) {
+    .cs-slide-del {
+        opacity: 1;
+    }
+}
+
+.cs-slide-add {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: var(--cs-soft);
+    border-style: dashed;
+    color: inherit;
+    font: inherit;
+    font-size: 0.82em;
+    opacity: 0.75;
+    cursor: pointer;
+}
+
+.cs-slide-add:hover {
+    opacity: 1;
+    border-color: var(--cs-accent);
+}

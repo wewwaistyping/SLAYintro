@@ -1,0 +1,12 @@
+{
+    "display_name": "SLAYintro",
+    "loading_order": 1,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "wewwaistyping",
+    "version": "1.0.0",
+    "homePage": "https://github.com/wewwaistyping/SLAYintro",
+    "auto_update": false
+}
