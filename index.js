@@ -1,24 +1,32 @@
 import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced, getRequestHeaders, eventSource, event_types } from '../../../../script.js';
 import { loader } from '../../../action-loader.js';
-import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
+import { callGenericPopup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { SPINNERS, applySpinner, effectiveSpinner } from './spinners.js';
 import { VFX, VFX_GROUPS, buildVfx } from './vfx.js';
 import { FRAME_DEVICES, applyFrame, frameDialog, screenDevice } from './frame.js';
 
 const MODULE = 'customSplash';
 const VIDEO_RE = /\.(mp4|webm|mov|m4v|ogv)(\?.*)?$/i;
+const GIF_RE = /\.gif(\?.*)?$/i;
 const SLIDE_FADE_MS = 1500;
 
 /** Phones, tablets and data-saver: lighter video, fewer particles. */
-const LITE = window.matchMedia('(max-width: 900px), (pointer: coarse)').matches
-    || Boolean(navigator.connection?.saveData);
+const SAVE_DATA = Boolean(navigator.connection?.saveData);
+const LITE = window.matchMedia('(max-width: 900px), (pointer: coarse)').matches || SAVE_DATA;
 const LITE_VFX_DENSITY = 0.45;
+/** Up to this many effects run at full density; past it each one thins out. */
+const VFX_FULL_LAYERS = 2;
 
 /** Uploaded pictures are downscaled to this longest side (backgrounds / logos and badges). */
 const MAX_SIDE_BG = 1920;
 const MAX_SIDE_ICON = 1024;
 const BIG_VIDEO_MB = 25;
+const BIG_GIF_MB = 8;
+/** A file is held in memory several times on its way up, which a phone tab may not survive. */
+const PHONE_UPLOAD_MAX_MB = 100;
+/** Longest side of the light copy shown in tiles and while a background loads. */
+const THUMB_SIDE = 320;
 
 const defaults = {
     enabled: true,
@@ -72,6 +80,9 @@ function snapshot(src) {
     return structuredClone(Object.fromEntries(PRESET_KEYS.map(k => [k, src[k]])));
 }
 
+/** A look as a string, to tell whether two looks differ. */
+const lookKey = src => JSON.stringify(PRESET_KEYS.map(k => src[k]));
+
 function settings() {
     extension_settings[MODULE] ??= {};
     const s = extension_settings[MODULE];
@@ -91,6 +102,7 @@ function settings() {
 }
 
 const isVideo = url => VIDEO_RE.test(url);
+const isMoving = url => isVideo(url) || GIF_RE.test(url);
 
 function mediaElement(url, className, { still = false } = {}) {
     const video = isVideo(url);
@@ -107,6 +119,8 @@ function mediaElement(url, className, { still = false } = {}) {
     } else {
         el.alt = '';
         el.decoding = 'async';
+        if (still) el.loading = 'lazy';
+        else el.fetchPriority = 'high';
     }
     return el;
 }
@@ -164,79 +178,162 @@ const LITE_VIDEO_MAX_MB = 15;
 
 /**
  * What a phone shows instead of the main background: the light video if the user gave one,
- * otherwise, for a heavy video, a still frame cut from it (see ensurePoster).
+ * otherwise, for a heavy video or GIF, a still frame cut from it (see ensurePoster).
  */
 function bgVideoUrl(s, small = false) {
     // The settings mini preview is ~250px wide: the light video is plenty there.
     if (!LITE) return small && s.bgUrlMobile ? s.bgUrlMobile : s.bgUrl;
-    if (s.bgUrlMobile) return s.bgUrlMobile;
     const poster = s.posters?.[s.bgUrl];
+    if (SAVE_DATA && poster?.url) return poster.url;
+    if (s.bgUrlMobile) return s.bgUrlMobile;
     return poster?.url && poster.mb > LITE_VIDEO_MAX_MB ? poster.url : s.bgUrl;
 }
 
-/** A still from the video, uploaded next to it. */
-async function videoPoster(url) {
-    const video = document.createElement('video');
-    video.muted = true;
-    video.preload = 'auto';
-    video.src = url;
+/** WebP where the browser can write it (Safari cannot), otherwise JPEG unless transparency matters. */
+async function encodeCanvas(canvas, quality, { alpha = false } = {}) {
+    const encode = type => new Promise(resolve => canvas.toBlob(resolve, type, quality));
+    const webp = await encode('image/webp');
+    return webp?.type === 'image/webp' || alpha ? webp : encode('image/jpeg');
+}
+
+const blobExt = blob => ({ 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' })[blob.type] ?? 'bin';
+
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => {
+            const url = String(r.result);
+            resolve(url.slice(url.indexOf(',') + 1));
+        };
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+    });
+}
+
+/** Something a canvas can draw: a picture, or a video a third of the way in. */
+async function loadStill(src, video) {
+    if (!video) {
+        const img = new Image();
+        img.src = src;
+        await img.decode();
+        return { el: img, w: img.naturalWidth, h: img.naturalHeight, done() {} };
+    }
+    const el = document.createElement('video');
+    el.muted = true;
+    el.playsInline = true;
+    el.preload = 'auto';
+    el.src = src;
+    const done = () => {
+        el.removeAttribute('src');
+        el.load();
+    };
     try {
         await new Promise((resolve, reject) => {
-            video.onloadeddata = resolve;
-            video.onerror = reject;
+            el.onloadeddata = resolve;
+            el.onerror = reject;
             setTimeout(() => reject(new Error('poster timeout')), 30000);
         });
         // Intros tend to open dark; a third in usually shows the actual scene.
-        video.currentTime = (video.duration || 3) * 0.3;
+        el.currentTime = (el.duration || 3) * 0.3;
         await new Promise((resolve, reject) => {
-            video.onseeked = resolve;
+            el.onseeked = resolve;
             setTimeout(() => reject(new Error('seek timeout')), 15000);
         });
-        const scale = Math.min(1, MAX_SIDE_BG / Math.max(video.videoWidth, video.videoHeight));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(video.videoWidth * scale);
-        canvas.height = Math.round(video.videoHeight * scale);
-        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-        const data = canvas.toDataURL('image/webp', 0.85).split(',')[1];
-        const base = url.split('/').pop().replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '');
-        return await uploadData(`${base}-poster.webp`, data);
-    } finally {
-        video.removeAttribute('src');
-        video.load();
+    } catch (e) {
+        done();
+        throw e;
     }
+    return { el, w: el.videoWidth, h: el.videoHeight, done };
 }
 
+async function uploadStill({ el, w, h }, name, side, quality) {
+    const scale = Math.min(1, side / Math.max(w, h));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    canvas.getContext('2d').drawImage(el, 0, 0, canvas.width, canvas.height);
+    const blob = await encodeCanvas(canvas, quality);
+    return uploadData(`${name}.${blobExt(blob)}`, await blobToBase64(blob));
+}
+
+/** Files we uploaded ourselves: the only ones the clean-up button may ever delete. */
+function rememberUpload(s, url) {
+    s.uploads ??= [];
+    if (url && !s.uploads.includes(url)) s.uploads.push(url);
+}
+
+const sameSite = url => {
+    try {
+        return new URL(url, location.href).origin === location.origin;
+    } catch {
+        return false;
+    }
+};
+
 const posterJobs = new Map();
-/** URLs whose size could not be read this session: no point asking again on every edit. */
+/** URLs that could not be processed this session: no point asking again on every edit. */
 const posterSkip = new Set();
+/** One at a time: these jobs read whole files and must not fight the app for the network. */
+let posterQueue = Promise.resolve();
 
 /**
- * Remembers how heavy each background video is and, for heavy ones, prepares a still frame
- * for phones. Runs once per video, in the background, from the settings panel.
+ * Prepares what stands in for a background: a light copy for tiles and for the moment it
+ * loads, plus, for videos and GIFs, a full-size still that phones use instead of heavy files.
+ * Runs once per file, in the background.
+ * @param {object} s
+ * @param {string} url the background
+ * @param {object} [o]
+ * @param {File} [o.file] the file just uploaded: nothing has to be fetched back
+ * @param {string} [o.light] the light video, a much cheaper source than the main one
  */
-function ensurePoster(s, url) {
-    if (!url || !isVideo(url) || s.posters?.[url] || posterJobs.has(url) || posterSkip.has(url)) return;
-    const job = (async () => {
-        const head = await fetch(url, { method: 'HEAD' });
-        const length = head.ok ? head.headers.get('content-length') : null;
-        // A missing file (a URL still being typed) or a server that hides the size: nothing to record.
-        if (!length) throw new Error(`no size (${head.status})`);
-        const mb = Number(length) / 1024 / 1024;
-        const entry = { mb: Math.round(mb * 10) / 10, url: '' };
-        if (mb > LITE_VIDEO_MAX_MB) entry.url = await videoPoster(url);
+function ensurePoster(s, url, { file = null, light = '' } = {}) {
+    const known = s.posters?.[url];
+    if (!url || !sameSite(url) || known?.thumb || posterJobs.has(url) || posterSkip.has(url)) return;
+    // Cutting a still out of a server video costs a phone real traffic: a computer will do it.
+    if (LITE && !file && !known?.url && isVideo(light || url)) return;
+    const work = async () => {
+        const entry = { mb: known?.mb ?? 0, url: known?.url ?? '', thumb: '' };
+        if (file) {
+            entry.mb = Math.round(file.size / 1024 / 1024 * 10) / 10;
+        } else if (isMoving(url) && !entry.mb) {
+            const head = await fetch(url, { method: 'HEAD' });
+            const length = head.ok ? head.headers.get('content-length') : null;
+            // A missing file (a URL still being typed) or a server that hides the size: nothing to record.
+            if (!length) throw new Error(`no size (${head.status})`);
+            entry.mb = Math.round(Number(length) / 1024 / 1024 * 10) / 10;
+        }
+        const local = file ? URL.createObjectURL(file) : '';
+        try {
+            const source = local || entry.url || light || url;
+            const still = await loadStill(source, file ? file.type.startsWith('video/') : isVideo(source));
+            try {
+                const base = url.split('/').pop().replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '');
+                if (isMoving(url) && !entry.url) entry.url = await uploadStill(still, `${base}-poster`, MAX_SIDE_BG, 0.85);
+                entry.thumb = await uploadStill(still, `${base}-thumb`, THUMB_SIDE, 0.7);
+            } finally {
+                still.done();
+            }
+        } finally {
+            if (local) URL.revokeObjectURL(local);
+        }
         s.posters ??= {};
         s.posters[url] = entry;
+        rememberUpload(s, entry.url);
+        rememberUpload(s, entry.thumb);
         // A background job, not a user edit: patch only this entry into the settings file.
         // A full save() from a tab opened earlier would stamp its stale builds as newest.
         saveSettingsDebounced();
         await patchStore(stored => {
             stored.posters ??= {};
             stored.posters[url] = entry;
+            stored.uploads = s.uploads;
         });
-    })().catch(e => {
+    };
+    const job = posterQueue.then(work).catch(e => {
         posterSkip.add(url);
-        console.warn('[SLAYintro] phone fallback not prepared for', url, e);
+        console.warn('[SLAYintro] stand-in not prepared for', url, e);
     }).finally(() => posterJobs.delete(url));
+    posterQueue = job;
     posterJobs.set(url, job);
 }
 
@@ -258,12 +355,33 @@ function animClass(s, url) {
 function framedMedia(s, url, frameKey, className, device) {
     const media = mediaElement(url, className);
     const frame = s.frames?.[frameKey]?.[device];
-    if (!frame) return media;
+    const standIn = standInFor(s, frameKey, url, media);
+    if (!frame && !standIn) return media;
     const wrap = document.createElement('div');
     wrap.className = 'cs-frame';
     wrap.append(media);
-    applyFrame(wrap, frame);
+    if (standIn) wrap.append(standIn);
+    if (frame) applyFrame(wrap, frame);
     return wrap;
+}
+
+/**
+ * Covers a background until it is on screen, then fades out. If a video never starts
+ * (iPhone in Low Power Mode blocks autoplay) the still simply stays.
+ */
+function standInFor(s, key, url, media) {
+    const known = s.posters?.[key];
+    const src = known?.url || known?.thumb;
+    if (!src || src === url) return null;
+    const img = document.createElement('img');
+    img.className = 'cs-still' + (known.url ? '' : ' cs-still-soft');
+    img.alt = '';
+    img.src = src;
+    media.addEventListener(isVideo(url) ? 'playing' : 'load', () => {
+        img.classList.add('cs-still-out');
+        setTimeout(() => img.remove(), 700);
+    }, { once: true });
+    return img;
 }
 
 /**
@@ -276,7 +394,7 @@ function buildBackground(s, life, small = false, device = screenDevice()) {
     if (s.bgMode === 'custom' && s.bgUrl) {
         const url = bgVideoUrl(s, small);
         // A still standing in for a video gets a slow zoom so the screen doesn't feel frozen.
-        const stillForVideo = isVideo(s.bgUrl) && !isVideo(url);
+        const stillForVideo = isMoving(s.bgUrl) && !isMoving(url);
         const anim = stillForVideo && s.bgAnim === 'none' ? ' cs-anim-kenburns' : animClass(s, url);
         bg.classList.add('cs-bg-single');
         bg.appendChild(framedMedia(s, url, s.bgUrl, 'cs-bg-media' + anim, device));
@@ -304,11 +422,14 @@ function buildBackground(s, life, small = false, device = screenDevice()) {
         const url = slide.dataset.url;
         slide.appendChild(framedMedia(s, url, url, 'cs-bg-media' + animClass(s, url), device));
     };
+    // Only the slide on screen plays: a video waiting its turn or already gone stays paused.
+    const hold = slide => slide.querySelector('video')?.pause();
     load(els[0]);
     els[0].classList.add('cs-on');
 
     if (els.length > 1) {
         load(els[1]);
+        hold(els[1]);
         let i = 0;
         life.interval(() => {
             if (!bg.isConnected) return life.release();
@@ -316,9 +437,15 @@ function buildBackground(s, life, small = false, device = screenDevice()) {
             i = (i + 1) % els.length;
             prev.classList.remove('cs-on');
             prev.classList.add('cs-leaving');
-            life.timeout(() => prev.classList.remove('cs-leaving'), SLIDE_FADE_MS);
+            life.timeout(() => {
+                prev.classList.remove('cs-leaving');
+                if (!prev.classList.contains('cs-on')) hold(prev);
+            }, SLIDE_FADE_MS);
             els[i].classList.add('cs-on');
-            load(els[(i + 1) % els.length]);
+            els[i].querySelector('video')?.play?.().catch(() => {});
+            const next = els[(i + 1) % els.length];
+            load(next);
+            if (next !== prev) hold(next);
         }, seconds * 1000);
     }
     return bg;
@@ -326,6 +453,13 @@ function buildBackground(s, life, small = false, device = screenDevice()) {
 
 function tipList(s) {
     return s.tips.split('\n').map(x => x.trim()).filter(Boolean);
+}
+
+/** The numbers a stage reads from CSS, so sliders can change them on a live preview. */
+function stageVars(el, s) {
+    el.style.setProperty('--cs-dim', String(s.bgDim / 100));
+    el.style.setProperty('--cs-icon-size', `${s.iconSize}px`);
+    el.style.setProperty('--cs-spin-scale', String((Number(s.spinnerScale) || 100) / 100));
 }
 
 /**
@@ -341,9 +475,7 @@ function decorate(el, s = settings(), { force = false, small = false, device = s
     const life = createLife(el);
     const spinner = effectiveSpinner(s);
     el.classList.add('cs-stage', `cs-spinner-${spinner}`);
-    el.style.setProperty('--cs-dim', String(s.bgDim / 100));
-    el.style.setProperty('--cs-icon-size', `${s.iconSize}px`);
-    el.style.setProperty('--cs-spin-scale', String((Number(s.spinnerScale) || 100) / 100));
+    stageVars(el, s);
 
     const bg = buildBackground(s, life, small, device);
     if (bg) {
@@ -353,8 +485,9 @@ function decorate(el, s = settings(), { force = false, small = false, device = s
 
     // Effect layers keep the order they were picked in: the first one sits lowest.
     let anchor = bg;
+    const density = (LITE ? LITE_VFX_DENSITY : 1) * Math.min(1, VFX_FULL_LAYERS / s.vfxList.length);
     for (const kind of s.vfxList) {
-        const layer = buildVfx(kind, s.vfxAmt[kind] ?? VFX_DEFAULT_AMT, LITE ? LITE_VFX_DENSITY : 1);
+        const layer = buildVfx(kind, s.vfxAmt[kind] ?? VFX_DEFAULT_AMT, density);
         if (!layer) continue;
         anchor ? anchor.after(layer) : el.prepend(layer);
         anchor = layer;
@@ -386,11 +519,13 @@ function decorate(el, s = settings(), { force = false, small = false, device = s
         tip.className = 'cs-tip';
         message.after(tip);
         let i = Math.floor(Math.random() * tips.length);
+        // Two identical animations in turn: a new name restarts it without forcing a layout.
+        let flip = false;
         const show = () => {
-            tip.classList.remove('cs-tip-in');
-            void tip.offsetWidth;
             tip.textContent = tips[i++ % tips.length];
-            tip.classList.add('cs-tip-in');
+            flip = !flip;
+            tip.classList.toggle('cs-tip-in', flip);
+            tip.classList.toggle('cs-tip-in2', !flip);
         };
         show();
         life.interval(() => {
@@ -469,6 +604,8 @@ async function uploadData(name, data) {
 const STORE_NAME = 'slayintro-settings.json';
 const STORE_URL = `/user/files/${STORE_NAME}`;
 const STORE_DEBOUNCE_MS = 800;
+/** How long the splash waits for the settings file before going with what it has. */
+const STORE_WAIT_MS = 500;
 let storeTimer = null;
 /** Store writes run one after another: two read-modify-writes at once would drop one's change. */
 let storeQueue = Promise.resolve();
@@ -531,7 +668,7 @@ async function loadStore() {
 const SHRINKABLE = /^image\/(jpeg|png|webp|bmp)$/;
 
 /**
- * Downscales a still picture to maxSide and re-encodes it as WebP (keeps transparency).
+ * Downscales a still picture to maxSide and re-encodes it, as WebP where the browser can.
  * GIFs are left alone: a canvas would freeze them on the first frame.
  * @returns {Promise<Blob|null>} null when the original is already fine
  */
@@ -548,7 +685,7 @@ async function shrinkImage(file, maxSide) {
     canvas.height = Math.round(bmp.height * scale);
     canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
     bmp.close();
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.86));
+    const blob = await encodeCanvas(canvas, 0.86, { alpha: file.type !== 'image/jpeg' });
     return blob && blob.size < file.size ? blob : null;
 }
 
@@ -558,19 +695,22 @@ async function uploadFile(file, maxSide = MAX_SIDE_BG) {
     const shrunk = await shrinkImage(file, maxSide).catch(() => null);
     if (shrunk) {
         blob = shrunk;
-        ext = 'webp';
+        ext = blobExt(shrunk);
     }
-    if (file.type.startsWith('video/') && file.size > BIG_VIDEO_MB * 1024 * 1024) {
-        toastr.warning(`Видео весит ${Math.round(file.size / 1024 / 1024)} МБ — на телефонах экран загрузки будет тормозить. Лучше сжать до 1080p или указать лёгкую версию для телефона.`, '', { timeOut: 10000 });
+    const mb = Math.round(file.size / 1024 / 1024);
+    if (file.type.startsWith('video/') && mb > BIG_VIDEO_MB) {
+        toastr.warning(`Видео весит ${mb} МБ — на телефонах экран загрузки будет тормозить. Лучше сжать до 1080p или указать лёгкую версию для телефона.`, '', { timeOut: 10000 });
+    }
+    if (file.type === 'image/gif' && mb > BIG_GIF_MB) {
+        toastr.warning(`GIF весит ${mb} МБ. Такие файлы тяжелее видео: лучше перегнать его в mp4.`, '', { timeOut: 10000 });
+    }
+    if (LITE && mb > PHONE_UPLOAD_MAX_MB) {
+        toastr.warning(`Файл на ${mb} МБ может не загрузиться с телефона: вкладке не хватит памяти. Надёжнее загрузить его с компьютера.`, '', { timeOut: 10000 });
     }
     const name = `splash-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${ext}`;
-    const data = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result).split(',')[1]);
-        r.onerror = reject;
-        r.readAsDataURL(blob);
-    });
-    return uploadData(name, data);
+    const url = await uploadData(name, await blobToBase64(blob));
+    rememberUpload(settings(), url);
+    return url;
 }
 
 const seg = (key, options) => `
@@ -620,10 +760,11 @@ function settingsHtml() {
       <div class="cs-builds">
         <i class="fa-solid fa-layer-group cs-builds-ico" title="Сборки"></i>
         <select id="cs_preset" class="text_pole"></select>
-        <button type="button" class="menu_button cs-icon-btn" id="cs_preset_save" title="Новая сборка из текущего вида"><i class="fa-solid fa-floppy-disk"></i></button>
+        <button type="button" class="menu_button cs-icon-btn" id="cs_preset_new" title="Новая сборка из текущего вида"><i class="fa-solid fa-plus"></i></button>
+        <button type="button" class="menu_button cs-icon-btn" id="cs_preset_save"><i class="fa-solid fa-floppy-disk"></i></button>
         <button type="button" class="menu_button cs-icon-btn" id="cs_preset_delete" title="Удалить сборку"><i class="fa-solid fa-trash-can"></i></button>
       </div>
-      <div class="cs-hint" id="cs_preset_hint"></div>
+      <div class="cs-hint" id="cs_preset_hint" hidden></div>
 
       <div class="cs-tabs">
         <button type="button" data-tab="bg" title="Фон"><i class="fa-solid fa-image"></i><span>Фон</span></button>
@@ -725,6 +866,7 @@ function settingsHtml() {
       </div>
 
       <div class="cs-hint cs-foot">Первые мгновения после запуска таверна показывает свой экран, потом подменяется на твой.</div>
+      <button type="button" class="menu_button cs-clean" id="cs_cleanup"><i class="fa-solid fa-broom"></i><span>Убрать неиспользуемые файлы</span></button>
       <input type="file" id="cs_file" accept="image/*,video/*" hidden>
      </div>
     </div>
@@ -739,13 +881,26 @@ function bindSettings() {
     const $root = $(settingsHtml());
     $('#extensions_settings2').append($root);
     const root = $root[0];
-    // Badge tiles: plumbob and custom depend on settings, so they are redrawn on change.
+    // Badge tiles are drawn on the first visit to their tab. Plumbob and custom depend on
+    // settings, so they are redrawn on change. A video badge stays on its first frame here:
+    // a tile would otherwise keep decoding it unseen for the whole session.
+    let spinTilesBuilt = false;
     const renderSpinTiles = (only = null) => {
+        if (!spinTilesBuilt) return;
         root.querySelectorAll('.cs-spinpick .cs-spin').forEach(el => {
-            if (!only || only.includes(el.dataset.kind)) applySpinner(el, el.dataset.kind, s);
+            if (only && !only.includes(el.dataset.kind)) return;
+            applySpinner(el, el.dataset.kind, s);
+            el.querySelectorAll('video').forEach(v => {
+                v.removeAttribute('autoplay');
+                v.pause();
+            });
         });
     };
-    renderSpinTiles();
+    const buildSpinTiles = () => {
+        if (spinTilesBuilt) return;
+        spinTilesBuilt = true;
+        renderSpinTiles();
+    };
 
     // ---- live mini preview ----
     const mini = root.querySelector('#cs_mini');
@@ -805,26 +960,28 @@ function bindSettings() {
     devButtons.forEach(b => b.addEventListener('click', () => showMiniDevice(b.dataset.dev)));
     showMiniDevice(miniDevice);
 
-    // Edits go straight into the selected build: otherwise switching builds and back
-    // silently threw the edits away while the dropdown still showed the build's name.
-    const persist = () => {
-        if (s.activePreset && s.presets[s.activePreset]) s.presets[s.activePreset] = snapshot(s);
-        save();
-    };
-
     // ---- generic bindings ----
-    const changed = () => {
-        sync();
-        pruneFrames();
-        renderFrameState();
-        renderSpinTiles(['plumbob', 'custom']);
-        scheduleMini();
-        persist();
-        ensurePoster(s, s.bgUrl);
+    // Edits change the current look, which is what the splash shows. A build only changes
+    // when the floppy is pressed. These keys are plain CSS numbers: no need to rebuild.
+    const LIVE_KEYS = ['bgDim', 'iconSize', 'spinnerScale'];
+    const TILE_KEYS = ['plumbobColor', 'spinnerUrl', 'spinnerAnim'];
+    let stillTimer = null;
+    const stillsFor = look => {
+        ensurePoster(s, look.bgUrl, { light: look.bgUrlMobile });
+        (look.slides ?? []).forEach(url => ensurePoster(s, url));
     };
-
-    // Backgrounds chosen before this existed get their phone fallback too.
-    [s.bgUrl, ...Object.values(s.presets).map(p => p.bgUrl)].forEach(url => ensurePoster(s, url));
+    const changed = key => {
+        sync();
+        renderFrameState();
+        if (!key || TILE_KEYS.includes(key)) renderSpinTiles(['plumbob', 'custom']);
+        if (LIVE_KEYS.includes(key) && !miniDirty && mini.firstElementChild) stageVars(mini.firstElementChild, s);
+        else scheduleMini();
+        renderDirty();
+        save();
+        // Waits for the typing to stop: a half-typed URL is not a file.
+        clearTimeout(stillTimer);
+        stillTimer = setTimeout(() => stillsFor(s), 1500);
+    };
 
     const refreshers = [];
     root.querySelectorAll('input[data-cs-key], textarea[data-cs-key], select[data-cs-key]').forEach(el => {
@@ -834,17 +991,12 @@ function bindSettings() {
         const refresh = () => { el[prop] = s[key]; };
         refresh();
         refreshers.push(refresh);
-        el.addEventListener(el.type === 'range' ? 'input' : 'change', () => {
+        // Text fields update the preview while typing, not only on blur.
+        const live = el.type === 'range' || el.type === 'text' || el.tagName === 'TEXTAREA';
+        el.addEventListener(live ? 'input' : 'change', () => {
             s[key] = num ? Number(el[prop]) : el[prop];
-            changed();
+            changed(key);
         });
-        // Text fields: update the preview while typing, not only on blur.
-        if (el.type === 'text' || el.tagName === 'TEXTAREA') {
-            el.addEventListener('input', () => {
-                s[key] = el.value;
-                changed();
-            });
-        }
     });
 
     root.querySelectorAll('.cs-seg').forEach(group => {
@@ -857,7 +1009,7 @@ function bindSettings() {
             if (!btn) return;
             s[key] = btn.dataset.value;
             refresh();
-            changed();
+            changed(key);
         });
     });
 
@@ -879,6 +1031,7 @@ function bindSettings() {
         root.querySelectorAll('.cs-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
         root.querySelectorAll('.cs-pane').forEach(p => { p.hidden = p.dataset.pane !== tab; });
         if (tab === 'vfx') fillVfxTiles();
+        if (tab === 'badge') buildSpinTiles();
     };
 
     // ---- VFX picker: live tiles, multi-select, per-effect strength ----
@@ -945,7 +1098,8 @@ function bindSettings() {
                 s.vfxAmt[kind] = Number(input.value);
                 val.textContent = `${input.value}%`;
                 scheduleMini();
-                persist();
+                renderDirty();
+                save();
             });
             row.querySelector('.cs-vrow-del').addEventListener('click', () => {
                 s.vfxList = s.vfxList.filter(k => k !== kind);
@@ -991,10 +1145,12 @@ function bindSettings() {
         stage.appendChild(spin);
         splashSkeleton(stage);
         const look = {
-            ...s, bgMode: 'custom', bgUrl: url, bgUrlMobile: '', bgAnim: 'none', vfxList: [], tips: '',
+            ...s, bgMode: 'custom', bgUrl: url, bgUrlMobile: '', bgAnim: 'none', vfxList: [], tips: '', posters: {},
             frames: { [url]: { [device]: { px: 50, py: 50, z: 1 } } },
         };
         const life = decorate(stage, look, { force: true, small: true, device });
+        // The dialog already plays this file big: a second moving copy only costs a decoder.
+        stage.querySelectorAll('video').forEach(v => v.addEventListener('playing', () => v.pause(), { once: true }));
         host.style.setProperty('--cs-stage-w', `${FRAME_DEVICES[device].w}px`);
         host.style.setProperty('--cs-stage-h', `${FRAME_DEVICES[device].h}px`);
         host.style.setProperty('--k', String(host.clientWidth / FRAME_DEVICES[device].w));
@@ -1040,13 +1196,16 @@ function bindSettings() {
 
     // ---- slideshow list ----
     const slidesBox = root.querySelector('#cs_slides');
+    let panelOpened = false;
     const renderSlides = () => {
+        // Hidden tiles still download their pictures, so nothing is drawn until the panel is seen.
+        if (!panelOpened) return;
         slidesBox.replaceChildren();
         s.slides.forEach((url, i) => {
             const tile = document.createElement('div');
             tile.className = 'cs-slide-tile';
             tile.title = url;
-            const media = mediaElement(url, 'cs-slide-thumb', { still: true });
+            const media = mediaElement(s.posters?.[url]?.thumb || url, 'cs-slide-thumb', { still: true });
             const del = document.createElement('button');
             del.type = 'button';
             del.className = 'cs-slide-del';
@@ -1077,8 +1236,6 @@ function bindSettings() {
         add.addEventListener('click', () => pick('slides', true));
         slidesBox.appendChild(add);
     };
-    renderSlides();
-
     root.querySelector('#cs_slide_add_url').addEventListener('click', () => {
         const input = root.querySelector('#cs_slide_url');
         const url = input.value.trim();
@@ -1128,6 +1285,7 @@ function bindSettings() {
             const maxSide = icon ? MAX_SIDE_ICON : MAX_SIDE_BG;
             for (const file of files) urls.push(await uploadFile(file, maxSide));
             if (frames) s.frames[urls[0]] = frames;
+            if (['bgUrl', 'slides'].includes(target)) urls.forEach((url, i) => ensurePoster(s, url, { file: files[i] }));
             if (target === 'slides') {
                 s.slides.push(...urls);
                 renderSlides();
@@ -1144,30 +1302,83 @@ function bindSettings() {
     });
 
     // ---- builds ----
+    const activeBuild = () => (s.presets[s.activePreset] ? s.activePreset : '');
+    /** A build as the look it gives once applied: older builds lack newer keys. */
+    const buildKey = name => {
+        const look = { ...snapshot(defaults), ...structuredClone(s.presets[name]) };
+        migrateVfx(look);
+        return lookKey(look);
+    };
+    // The look nothing needs saving for: the selected build, or the look as it was left.
+    let savedKey = activeBuild() ? buildKey(activeBuild()) : lookKey(s);
+    const isDirty = () => lookKey(s) !== savedKey;
+
+    const saveButton = root.querySelector('#cs_preset_save');
+    const presetHint = root.querySelector('#cs_preset_hint');
+    function renderDirty() {
+        const active = activeBuild();
+        const dirty = isDirty();
+        saveButton.classList.toggle('cs-dirty', dirty);
+        saveButton.title = active ? `Сохранить в «${active}»` : 'Сохранить как новую сборку';
+        presetHint.hidden = !dirty;
+        presetHint.textContent = active
+            ? `Правки не сохранены в «${active}». Заставка уже такая, сборка пока нет.`
+            : 'Этот вид не сохранён в сборку.';
+    }
+
     const renderPresets = () => {
         const $sel = $('#cs_preset').empty();
         $sel.append($('<option>').val('').text('— без сборки —'));
         for (const name of Object.keys(s.presets).sort((a, b) => a.localeCompare(b))) {
             $sel.append($('<option>').val(name).text(name));
         }
-        const active = s.presets[s.activePreset] ? s.activePreset : '';
-        $sel.val(active);
-        root.querySelector('#cs_preset_hint').textContent = active
-            ? `Правки сразу пишутся в «${active}». Для новой сборки сначала нажми дискету.`
-            : 'Сборка не выбрана: правки останутся только в текущем виде.';
+        $sel.val(activeBuild());
+        renderDirty();
     };
     renderPresets();
 
-    // How the selected build looked when it was picked. Edits land in it right away, so
-    // "save as new" after editing would leave two identical builds without this.
-    let baseline;
-    const rememberBaseline = () => { baseline = { name: s.activePreset, look: snapshot(s) }; };
-    rememberBaseline();
-
-    $('#cs_preset').on('change', function () {
-        const name = String($(this).val());
+    const storeBuild = name => {
+        pruneFrames();
+        s.presets[name] = snapshot(s);
         s.activePreset = name;
-        if (name && s.presets[name]) {
+        savedKey = lookKey(s);
+        renderPresets();
+        save();
+        toastr.success(`Сборка «${name}» сохранена`);
+    };
+
+    /** @returns {Promise<boolean>} whether a build was made */
+    const saveAsNew = async () => {
+        // Cancel gives false, the X gives null: only a typed string is a name.
+        const typed = await callGenericPopup('Название новой сборки:', POPUP_TYPE.INPUT, '');
+        const name = typeof typed === 'string' ? typed.trim() : '';
+        if (!name) return false;
+        if (s.presets[name] && name !== s.activePreset) {
+            const ok = await callGenericPopup(`Сборка «${name}» уже есть. Перезаписать?`, POPUP_TYPE.CONFIRM);
+            if (!ok) return false;
+        }
+        storeBuild(name);
+        return true;
+    };
+
+    $('#cs_preset').on('change', async function () {
+        const name = String($(this).val());
+        const from = activeBuild();
+        if (name === from) return;
+        if (isDirty()) {
+            const answer = await callGenericPopup(
+                from ? `В сборке «${from}» есть несохранённые правки. Сохранить их?` : 'Этот вид не сохранён в сборку. Сохранить?',
+                POPUP_TYPE.CONFIRM, '', { okButton: 'Сохранить', cancelButton: 'Не сохранять' },
+            );
+            const stay = () => $('#cs_preset').val(from);
+            if (answer === POPUP_RESULT.CANCELLED) return stay();
+            if (answer === POPUP_RESULT.AFFIRMATIVE) {
+                if (from) storeBuild(from);
+                else if (!await saveAsNew()) return stay();
+            }
+        }
+        s.activePreset = name;
+        if (name) {
             // Older builds may lack newer keys: start from defaults so nothing leaks from the previous look.
             Object.assign(s, snapshot(defaults), structuredClone(s.presets[name]));
             migrateVfx(s);
@@ -1175,36 +1386,16 @@ function bindSettings() {
             renderSlides();
             renderVfx();
         }
-        rememberBaseline();
+        savedKey = lookKey(s);
         renderPresets();
         changed();
     });
 
-    $('#cs_preset_save').on('click', async () => {
-        // Cancel gives false, the X gives null: only a typed string is a name.
-        const typed = await callGenericPopup('Сохранить как новую сборку. Название:', POPUP_TYPE.INPUT, '');
-        const name = typeof typed === 'string' ? typed.trim() : '';
-        if (!name) return;
-        if (s.presets[name] && name !== s.activePreset) {
-            const ok = await callGenericPopup(`Сборка «${name}» уже есть. Перезаписать?`, POPUP_TYPE.CONFIRM);
-            if (!ok) return;
-        }
-        const before = baseline;
-        const edited = before.name !== name && s.presets[before.name]
-            && JSON.stringify(snapshot(s)) !== JSON.stringify(before.look);
-        s.presets[name] = snapshot(s);
-        s.activePreset = name;
-        rememberBaseline();
-        renderPresets();
-        save();
-        toastr.success(`Сборка «${name}» сохранена`);
-        if (edited) {
-            const undo = await callGenericPopup(`Правки успели записаться и в сборку «${before.name}». Вернуть её к прежнему виду?`, POPUP_TYPE.CONFIRM);
-            if (undo) {
-                s.presets[before.name] = before.look;
-                save();
-            }
-        }
+    $('#cs_preset_new').on('click', saveAsNew);
+    $(saveButton).on('click', () => {
+        const active = activeBuild();
+        if (active) storeBuild(active);
+        else saveAsNew();
     });
 
     $('#cs_preset_delete').on('click', async () => {
@@ -1217,24 +1408,61 @@ function bindSettings() {
         if (!ok) return;
         delete s.presets[name];
         s.activePreset = '';
-        rememberBaseline();
+        savedKey = lookKey(s);
         renderPresets();
         save();
         toastr.success(`Сборка «${name}» удалена`);
     });
 
+    // ---- clean-up: only files this extension uploaded, and nothing any look still uses ----
+    root.querySelector('#cs_cleanup').addEventListener('click', async () => {
+        const sources = new Set();
+        for (const look of [s, ...Object.values(s.presets)]) {
+            [look.bgUrl, look.bgUrlMobile, look.iconUrl, look.spinnerUrl, ...(look.slides ?? [])].forEach(url => url && sources.add(url));
+        }
+        const used = new Set(sources);
+        for (const url of sources) [s.posters?.[url]?.url, s.posters?.[url]?.thumb].forEach(file => file && used.add(file));
+        const spare = (s.uploads ?? []).filter(url => !used.has(url));
+        if (!spare.length) return toastr.info('Лишних файлов нет');
+        const ok = await callGenericPopup(`Удалить файлов: ${spare.length}? Их нет ни в текущем виде, ни в сборках. Вернуть их будет нельзя.`, POPUP_TYPE.CONFIRM);
+        if (!ok) return;
+        const gone = [];
+        for (const url of spare) {
+            const res = await fetch('/api/files/delete', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ path: url.replace(/^\/+/, '') }),
+            }).catch(() => null);
+            if (res?.ok || res?.status === 404) gone.push(url);
+        }
+        s.uploads = s.uploads.filter(url => !gone.includes(url));
+        for (const url of gone) delete s.posters?.[url];
+        save();
+        toastr.success(`Удалено файлов: ${gone.length}`);
+    });
+
+    // Tiles, thumbnails and stand-ins wait until someone actually opens the panel.
+    new IntersectionObserver((entries, seen) => {
+        if (!entries.some(e => e.isIntersecting)) return;
+        seen.disconnect();
+        panelOpened = true;
+        renderSlides();
+        [s, ...Object.values(s.presets)].forEach(stillsFor);
+    }).observe(root.querySelector('.cs-body'));
+
     root.querySelector('#cs_preview').addEventListener('click', preview);
     sync();
 }
 
-// ST waits for this module (top-level await included) before going on with startup.
-await loadStore();
+// The newest settings decide the look, but a slow server must not cost the splash its moment.
+const storeRead = loadStore();
+await Promise.race([storeRead, new Promise(resolve => setTimeout(resolve, STORE_WAIT_MS))]);
 hookStartup();
-// The settings panel (~600 nodes, live tiles) is not needed to show the splash:
-// build it once the app is ready so it doesn't compete with startup.
-// #preloader exists only until the first splash closes, i.e. while the app is starting.
+// The settings panel is not needed to show the splash: build it once the app is ready so it
+// doesn't compete with startup. #preloader exists only until the first splash closes.
+const startPanel = () => storeRead.then(bindSettings);
 if (document.getElementById('preloader')) {
-    eventSource.once(event_types.APP_READY, () => bindSettings());
+    eventSource.once(event_types.APP_READY, startPanel);
 } else {
-    jQuery(() => bindSettings());
+    jQuery(startPanel);
 }

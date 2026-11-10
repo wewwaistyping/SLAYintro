@@ -8,8 +8,11 @@ export const FRAME_DEVICES = {
     phone: { w: 393, h: 710, label: 'Телефон', icon: 'fa-mobile-screen-button' },
 };
 
-/** The screen this page is on: a tablet held sideways wants the wide frame. */
-export const screenDevice = () => (window.innerHeight > window.innerWidth ? 'phone' : 'desk');
+/**
+ * The screen this page is on: a tablet held sideways wants the wide frame. A media query,
+ * because reading innerHeight on a phone forces a layout of the whole page.
+ */
+export const screenDevice = () => (window.matchMedia('(orientation: portrait)').matches ? 'phone' : 'desk');
 
 const NARROW = 560;
 const MAX_ZOOM = 4;
@@ -42,8 +45,7 @@ function toCss(r, mediaAspect, dev) {
 export function applyFrame(wrap, f) {
     wrap.style.transformOrigin = `${f.px}% ${f.py}%`;
     wrap.style.transform = `scale(${f.z})`;
-    const media = wrap.firstElementChild;
-    if (media) media.style.objectPosition = `${f.px}% ${f.py}%`;
+    for (const media of wrap.children) media.style.objectPosition = `${f.px}% ${f.py}%`;
 }
 
 function dialogHtml(logo) {

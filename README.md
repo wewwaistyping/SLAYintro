@@ -51,7 +51,7 @@ Settings: **Extensions → SLAYintro**. A live preview sits at the top; click it
 
 ## Builds
 
-A set of settings can be saved as a build and switched in the dropdown. Edits go straight into the selected build, and a line under the list reminds you which one. To make a new build, press the floppy first and edit after. If you press it after editing, the extension offers to put the old build back as it was. The bin deletes the selected build.
+A set of settings can be saved as a build and switched in the dropdown. Edits show on the splash right away, but they reach a build only when you press the floppy. While they are unsaved the floppy is highlighted, and switching to another build asks what to do with them. With no build selected, the floppy asks for a name. The plus makes a new build from the current look, the bin deletes the selected one.
 
 ## Framing and cropping
 
@@ -86,6 +86,8 @@ Videos are best prepared in advance: no audio, 1080p or less, a few megabytes. F
 ## Phones
 
 On phones and tablets the extension lightens the screen on its own: it uses the light video if you set one, and for a heavy video without a light version it shows a frame from it with a slow zoom. Effects use half the particles, with no blur or glow.
+
+The extension makes a light copy of every background on its own. It shows on the tiles and on screen while the background itself loads. If a video does not start, as on an iPhone in Low Power Mode, a still stays in its place. From the third effect on, all effects get fewer particles. The button at the bottom of the panel deletes files the extension uploaded that nothing uses any more.
 
 Once the Tavern has loaded, the screen is unloaded completely: videos stopped, timers cleared, nothing keeps running.
 
