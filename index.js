@@ -54,6 +54,7 @@ const defaults = {
     spinnerUrl: '',
     spinnerAnim: 'spin', // spin | pulse | sway | float | blink | flip | bounce | none
     skipCrop: false,
+    themeKeep: false, // leave a theme's own decorations on the splash alone
 };
 
 const VFX_DEFAULT_AMT = 50;
@@ -74,7 +75,7 @@ function migrateVfx(s) {
 }
 
 /** Everything that defines a look; the switches below are global, not part of a build. */
-const PRESET_KEYS = Object.keys(defaults).filter(k => !['enabled', 'skipCrop'].includes(k));
+const PRESET_KEYS = Object.keys(defaults).filter(k => !['enabled', 'skipCrop', 'themeKeep'].includes(k));
 
 function snapshot(src) {
     return structuredClone(Object.fromEntries(PRESET_KEYS.map(k => [k, src[k]])));
@@ -475,6 +476,7 @@ function decorate(el, s = settings(), { force = false, small = false, device = s
     const life = createLife(el);
     const spinner = effectiveSpinner(s);
     el.classList.add('cs-stage', `cs-spinner-${spinner}`);
+    if (s.themeKeep) el.classList.add('cs-theme-keep');
     stageVars(el, s);
 
     const bg = buildBackground(s, life, small, device);
@@ -865,6 +867,8 @@ function settingsHtml() {
         <div class="cs-vsel" id="cs_vsel"></div>
       </div>
 
+      <label class="checkbox_label cs-theme-keep-opt"><input type="checkbox" data-cs-key="themeKeep"><span>Не трогать оформление темы на экране загрузки</span></label>
+      <div class="cs-hint">Некоторые темы рисуют свою картинку на значке загрузки. По умолчанию расширение её убирает, с галочкой оставит.</div>
       <div class="cs-hint cs-foot">Первые мгновения после запуска таверна показывает свой экран, потом подменяется на твой.</div>
       <button type="button" class="menu_button cs-clean" id="cs_cleanup"><i class="fa-solid fa-broom"></i><span>Убрать неиспользуемые файлы</span></button>
       <input type="file" id="cs_file" accept="image/*,video/*" hidden>

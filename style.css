@@ -263,6 +263,49 @@
     box-sizing: border-box;
 }
 
+/* ---------- Themes vs our splash ----------
+   Themes like to decorate core's splash: a picture on #load-spinner, pseudo-elements on
+   #loader, the spinner's own animation or ::before switched off. Our splash reuses those
+   very elements, so under it all of that is undone, unless the user asked to keep it
+   (.cs-theme-keep). Doubled selectors outweigh a theme's !important; nothing here
+   applies outside the splash. */
+#loader#loader.cs-stage:not(.cs-theme-keep)::before,
+#loader#loader.cs-stage:not(.cs-theme-keep)::after {
+    content: none !important;
+    display: none !important;
+}
+
+.cs-stage.cs-stage.cs-stage:not(.cs-theme-keep) #load-spinner#load-spinner {
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    top: auto !important;
+    left: auto !important;
+    color: inherit !important;
+    opacity: 1 !important;
+}
+
+.cs-stage.cs-stage.cs-stage:not(.cs-theme-keep) #load-spinner#load-spinner:not(.cs-spin-art) {
+    position: static !important;
+}
+
+/* The badges without their own size keep core's, not the one a theme gave the spinner. */
+.cs-stage.cs-stage:is(.cs-spinner-gear, .cs-spinner-none):not(.cs-theme-keep) #load-spinner#load-spinner {
+    --spinner-size: 2em;
+    font-size: 3em !important; /* core's fa-3x, which icon-size rules in themes override */
+}
+
+.cs-stage.cs-stage.cs-spinner-ring:not(.cs-theme-keep) #load-spinner#load-spinner::before {
+    display: block !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .cs-stage.cs-stage.cs-spinner-gear:not(.cs-theme-keep) #load-spinner#load-spinner {
+        animation: fa-spin 2s linear infinite !important;
+    }
+}
+
 @keyframes cs-spin {
     to { transform: rotate(360deg); }
 }

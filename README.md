@@ -89,6 +89,8 @@ On phones and tablets the extension lightens the screen on its own: it uses the 
 
 The extension makes a light copy of every background on its own. It shows on the tiles and on screen while the background itself loads. If a video does not start, as on an iPhone in Low Power Mode, a still stays in its place. From the third effect on, all effects get fewer particles. The button at the bottom of the panel deletes files the extension uploaded that nothing uses any more.
 
+Some themes draw their own picture on the loading badge or on the loading screen. While SLAYintro is showing, the extension removes those additions; the rest of the theme is untouched. To keep them, tick "Leave the theme's loading screen decorations alone" at the bottom of the panel.
+
 Once the Tavern has loaded, the screen is unloaded completely: videos stopped, timers cleared, nothing keeps running.
 
 ## Good to know
