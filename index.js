@@ -25,6 +25,8 @@ const BIG_VIDEO_MB = 25;
 const BIG_GIF_MB = 8;
 /** A file is held in memory several times on its way up, which a phone tab may not survive. */
 const PHONE_UPLOAD_MAX_MB = 100;
+/** A phone will not download more than this just to prepare a still: a computer will do it. */
+const PHONE_FETCH_MAX_MB = 6;
 /** Longest side of the light copy shown in tiles and while a background loads. */
 const THUMB_SIDE = 320;
 
@@ -184,10 +186,37 @@ const LITE_VIDEO_MAX_MB = 15;
 function bgVideoUrl(s, small = false) {
     // The settings mini preview is ~250px wide: the light video is plenty there.
     if (!LITE) return small && s.bgUrlMobile ? s.bgUrlMobile : s.bgUrl;
-    const poster = s.posters?.[s.bgUrl];
+    return liteSource(s, s.bgUrl, s.bgUrlMobile);
+}
+
+/** What a phone loads for one background file: its still when the file itself is too heavy. */
+function liteSource(s, url, light = '') {
+    const poster = s.posters?.[url];
     if (SAVE_DATA && poster?.url) return poster.url;
-    if (s.bgUrlMobile) return s.bgUrlMobile;
-    return poster?.url && poster.mb > LITE_VIDEO_MAX_MB ? poster.url : s.bgUrl;
+    if (light) return light;
+    return poster?.url && poster.mb > LITE_VIDEO_MAX_MB ? poster.url : url;
+}
+
+/**
+ * Animated WebP and APNG look like plain pictures by type, but a canvas would freeze them
+ * on the first frame, so they are left alone like GIFs.
+ * @param {Blob} blob the file, or at least its first few KB
+ */
+async function isAnimatedImage(blob) {
+    try {
+        const b = new Uint8Array(await blob.slice(0, 4096).arrayBuffer());
+        const tag = i => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+        if (tag(0) === 'RIFF' && tag(8) === 'WEBP') return tag(12) === 'VP8X' && Boolean(b[20] & 0x02);
+        if (b[0] !== 0x89 || tag(1) !== 'PNG\r') return false;
+        // PNG chunks: an acTL before the first IDAT marks an animation.
+        for (let o = 8; o + 8 <= b.length;) {
+            const type = tag(o + 4);
+            if (type === 'acTL') return true;
+            if (type === 'IDAT') return false;
+            o += 12 + ((b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]) >>> 0);
+        }
+    } catch { /* unreadable: treat as a plain picture */ }
+    return false;
 }
 
 /** WebP where the browser can write it (Safari cannot), otherwise JPEG unless transparency matters. */
@@ -247,13 +276,13 @@ async function loadStill(src, video) {
     return { el, w: el.videoWidth, h: el.videoHeight, done };
 }
 
-async function uploadStill({ el, w, h }, name, side, quality) {
+async function uploadStill({ el, w, h }, name, side, quality, alpha = false) {
     const scale = Math.min(1, side / Math.max(w, h));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(w * scale));
     canvas.height = Math.max(1, Math.round(h * scale));
     canvas.getContext('2d').drawImage(el, 0, 0, canvas.width, canvas.height);
-    const blob = await encodeCanvas(canvas, quality);
+    const blob = await encodeCanvas(canvas, quality, { alpha });
     return uploadData(`${name}.${blobExt(blob)}`, await blobToBase64(blob));
 }
 
@@ -296,12 +325,16 @@ function ensurePoster(s, url, { file = null, light = '' } = {}) {
         const entry = { mb: known?.mb ?? 0, url: known?.url ?? '', thumb: '' };
         if (file) {
             entry.mb = Math.round(file.size / 1024 / 1024 * 10) / 10;
-        } else if (isMoving(url) && !entry.mb) {
+        } else if ((isMoving(url) || LITE) && !entry.mb) {
             const head = await fetch(url, { method: 'HEAD' });
             const length = head.ok ? head.headers.get('content-length') : null;
             // A missing file (a URL still being typed) or a server that hides the size: nothing to record.
             if (!length) throw new Error(`no size (${head.status})`);
             entry.mb = Math.round(Number(length) / 1024 / 1024 * 10) / 10;
+        }
+        if (LITE && !file && !entry.url && entry.mb > PHONE_FETCH_MAX_MB) {
+            posterSkip.add(url);
+            return;
         }
         const local = file ? URL.createObjectURL(file) : '';
         try {
@@ -310,7 +343,8 @@ function ensurePoster(s, url, { file = null, light = '' } = {}) {
             try {
                 const base = url.split('/').pop().replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '');
                 if (isMoving(url) && !entry.url) entry.url = await uploadStill(still, `${base}-poster`, MAX_SIDE_BG, 0.85);
-                entry.thumb = await uploadStill(still, `${base}-thumb`, THUMB_SIDE, 0.7);
+                const seeThrough = !isVideo(source) && !/\.jpe?g(\?.*)?$/i.test(source) && file?.type !== 'image/jpeg';
+                entry.thumb = await uploadStill(still, `${base}-thumb`, THUMB_SIDE, 0.7, seeThrough);
             } finally {
                 still.done();
             }
@@ -421,7 +455,10 @@ function buildBackground(s, life, small = false, device = screenDevice()) {
     const load = slide => {
         if (slide.firstChild) return;
         const url = slide.dataset.url;
-        slide.appendChild(framedMedia(s, url, url, 'cs-bg-media' + animClass(s, url), device));
+        const shown = LITE ? liteSource(s, url) : url;
+        const stillForVideo = isMoving(url) && !isMoving(shown);
+        const anim = stillForVideo && s.bgAnim === 'none' ? ' cs-anim-kenburns' : animClass(s, shown);
+        slide.appendChild(framedMedia(s, shown, url, 'cs-bg-media' + anim, device));
     };
     // Only the slide on screen plays: a video waiting its turn or already gone stays paused.
     const hold = slide => slide.querySelector('video')?.pause();
@@ -512,7 +549,9 @@ function decorate(el, s = settings(), { force = false, small = false, device = s
     const message = el.querySelector('.splash-message');
     if (message && s.text.trim()) {
         message.textContent = s.text.trim();
-        delete message.dataset.i18n;
+        // Not removed: Tavern's translator trips over an element that loses this attribute.
+        // A key no language file has leaves our text alone.
+        if (message.dataset.i18n) message.dataset.i18n = 'slayintro-own-text';
     }
 
     const tips = tipList(s);
@@ -675,7 +714,7 @@ const SHRINKABLE = /^image\/(jpeg|png|webp|bmp)$/;
  * @returns {Promise<Blob|null>} null when the original is already fine
  */
 async function shrinkImage(file, maxSide) {
-    if (!SHRINKABLE.test(file.type)) return null;
+    if (!SHRINKABLE.test(file.type) || await isAnimatedImage(file)) return null;
     const bmp = await createImageBitmap(file);
     const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
     if (scale === 1 && file.size < 1.5 * 1024 * 1024) {
@@ -1183,6 +1222,8 @@ function bindSettings() {
         const url = s[key];
         if (!url) return toastr.info('Сначала выбери файл');
         if (!croppable(url)) return toastr.info('GIF и видео не обрезаются');
+        const head = await fetch(url, { headers: { Range: 'bytes=0-4095' } }).then(r => r.blob()).catch(() => null);
+        if (head && await isAnimatedImage(head)) return toastr.info('Анимированные картинки не обрезаются');
         const blob = await frameDialog(url, { logo: true });
         if (!blob) return;
         try {
@@ -1270,7 +1311,8 @@ function bindSettings() {
             const icon = ['iconUrl', 'spinnerUrl'].includes(target);
             // Asked before the upload, so backing out leaves nothing behind in user/files.
             let frames = null;
-            if (!s.skipCrop && (target === 'bgUrl' || (icon && SHRINKABLE.test(files[0].type)))) {
+            const cropIcon = icon && SHRINKABLE.test(files[0].type) && !await isAnimatedImage(files[0]);
+            if (!s.skipCrop && (target === 'bgUrl' || cropIcon)) {
                 const local = URL.createObjectURL(files[0]);
                 try {
                     const video = files[0].type.startsWith('video/');
@@ -1440,7 +1482,9 @@ function bindSettings() {
             if (res?.ok || res?.status === 404) gone.push(url);
         }
         s.uploads = s.uploads.filter(url => !gone.includes(url));
-        for (const url of gone) delete s.posters?.[url];
+        for (const [source, p] of Object.entries(s.posters ?? {})) {
+            if ([source, p.url, p.thumb].some(file => gone.includes(file))) delete s.posters[source];
+        }
         save();
         toastr.success(`Удалено файлов: ${gone.length}`);
     });

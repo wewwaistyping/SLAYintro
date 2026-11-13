@@ -512,6 +512,10 @@
     height: 100%;
     object-fit: contain;
     display: block;
+}
+
+/* The shadow sits on the badge, not on the picture: it must not turn with it. */
+.cs-stage :is(#load-spinner, .cs-spin).cs-art-k-custom {
     filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
 }
 

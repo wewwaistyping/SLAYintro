@@ -15,6 +15,8 @@ export const FRAME_DEVICES = {
 export const screenDevice = () => (window.matchMedia('(orientation: portrait)').matches ? 'phone' : 'desk');
 
 const NARROW = 560;
+/** Longest side of a crop: a phone cannot hold a canvas the size of a camera photo. */
+const CROP_MAX_SIDE = 2048;
 const MAX_ZOOM = 4;
 /** Below this many source pixels across, the frame is upscaled enough to look soft. */
 const SOFT_WIDTH = { desk: 800, phone: 300 };
@@ -219,6 +221,21 @@ export function frameDialog(url, { video = false, logo = false, frames = {}, dev
             draw(false);
         }
 
+        // Dragging redraws once per frame, not once per pointer event.
+        let raf = 0;
+        const queueDraw = () => {
+            raf ||= requestAnimationFrame(() => {
+                raf = 0;
+                if (ov.isConnected) draw();
+            });
+        };
+        const flushDraw = () => {
+            if (!raf) return;
+            cancelAnimationFrame(raf);
+            raf = 0;
+            draw();
+        };
+
         // One path for mouse and finger; two fingers on the picture zoom the frame.
         const fingers = new Map();
         let drag = null;
@@ -244,7 +261,7 @@ export function frameDialog(url, { video = false, logo = false, frames = {}, dev
                 const w = pinch.w * pinch.d / Math.hypot(p[0] - q[0], p[1] - q[1]);
                 const a = wantAspect();
                 b = { x: pinch.cx - w / 2, y: pinch.cy - w / a / 2, w, h: w / a };
-                draw();
+                queueDraw();
                 return;
             }
             if (!drag) return;
@@ -254,7 +271,7 @@ export function frameDialog(url, { video = false, logo = false, frames = {}, dev
             if (!drag.h) {
                 b.x = o.x + dx;
                 b.y = o.y + dy;
-                draw();
+                queueDraw();
                 return;
             }
             // Resize from a corner: the opposite corner stays pinned, the frame stays on the picture.
@@ -277,9 +294,10 @@ export function frameDialog(url, { video = false, logo = false, frames = {}, dev
                 h = clamp(h, min, roomH);
             }
             b = { x: left ? ax - w : ax, y: top ? ay - h : ay, w, h };
-            draw();
+            queueDraw();
         });
         const endDrag = e => {
+            flushDraw();
             fingers.delete(e.pointerId);
             if (fingers.size < 2) pinch = null;
             drag = null;
@@ -311,22 +329,35 @@ export function frameDialog(url, { video = false, logo = false, frames = {}, dev
 
         const finish = value => {
             shown?.release();
+            cancelAnimationFrame(raf);
             document.removeEventListener('keydown', onKey, true);
             window.removeEventListener('resize', onResize);
-            media.pause?.();
+            if (video) {
+                // A detached <video> keeps its decoder and buffers until it is collected.
+                media.pause();
+                media.removeAttribute('src');
+                media.load();
+            }
             ov.remove();
             resolve(value);
         };
         function save() {
+            flushDraw();
             const [nw, nh] = natural();
             if (!nw) return;
             if (logo) {
+                const sw = cropRect.w * nw;
+                const sh = cropRect.h * nh;
+                const k = Math.min(1, CROP_MAX_SIDE / Math.max(sw, sh));
                 const c = document.createElement('canvas');
-                c.width = Math.max(1, Math.round(cropRect.w * nw));
-                c.height = Math.max(1, Math.round(cropRect.h * nh));
-                c.getContext('2d').drawImage(media, cropRect.x * nw, cropRect.y * nh, c.width, c.height, 0, 0, c.width, c.height);
+                c.width = Math.max(1, Math.round(sw * k));
+                c.height = Math.max(1, Math.round(sh * k));
+                c.getContext('2d').drawImage(media, cropRect.x * nw, cropRect.y * nh, sw, sh, 0, 0, c.width, c.height);
                 try {
-                    c.toBlob(blob => finish(blob ?? undefined), 'image/webp', 0.92);
+                    c.toBlob(blob => {
+                        if (blob) finish(blob);
+                        else toastr.error('Не удалось обрезать картинку');
+                    }, 'image/webp', 0.92);
                 } catch (e) {
                     // A picture from another site without CORS can be shown but not read back.
                     console.warn('[SLAYintro] crop failed', e);

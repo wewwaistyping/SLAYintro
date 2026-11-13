@@ -241,7 +241,7 @@ const ART = {
         </svg>`,
 
     custom: s => {
-        const url = s.spinnerUrl;
+        const url = String(s.spinnerUrl ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         if (!url) return '<span class="cs-custom-empty"><i class="fa-solid fa-image"></i></span>';
         const anim = `cs-cust-${s.spinnerAnim || 'spin'}`;
         return VIDEO_RE.test(url)
