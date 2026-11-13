@@ -777,7 +777,7 @@ function settingsHtml() {
 <div class="cs-settings">
   <div class="inline-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
-      <b>SLAYintro</b>
+      <b class="cs-hd" title="SLAYintro"><svg class="cs-hd-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4" width="19" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="#f472b6" d="M12 6C12.5 8.8 13.2 9.5 16 10 13.2 10.5 12.5 11.2 12 14 11.5 11.2 10.8 10.5 8 10 10.8 9.5 11.5 8.8 12 6Z"/><g fill="#f9a8d4"><circle cx="9" cy="15.2" r=".9"/><circle cx="12" cy="15.2" r=".9"/><circle cx="15" cy="15.2" r=".9"/></g><path d="M9 21h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="cs-hd-s">SLAY</span><svg class="cs-hd-sp" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2Q12 12 22 12Q12 12 12 22Q12 12 2 12Q12 12 12 2Z"/></svg><span class="cs-hd-i">intro</span></b>
       <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
     <div class="inline-drawer-content">

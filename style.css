@@ -356,6 +356,50 @@
     --cs-soft: color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 7%, transparent);
 }
 
+/* Title in the extensions list: a screen with a star, then the SLAY wordmark. */
+.cs-hd {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+.cs-hd-ic {
+    width: 1.25em;
+    height: 1.25em;
+    margin-right: 0.4em;
+    flex: none;
+}
+
+.cs-hd-s {
+    font-style: italic;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    padding-right: 2px;
+    font-size: 1.15em;
+    /* Themes put a dark shadow under titles: on see-through letters it lies over the pink fill. */
+    text-shadow: none;
+    background: linear-gradient(135deg, #f472b6 0%, #f9a8d4 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.cs-hd-sp {
+    width: 0.9em;
+    height: 0.9em;
+    margin: 0 0.1em 0.4em -0.3em;
+    color: #f9a8d4;
+    flex: none;
+}
+
+.cs-hd-i {
+    font-size: 0.7em;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    opacity: 0.9;
+}
+
 .cs-settings .cs-body {
     display: flex;
     flex-direction: column;
